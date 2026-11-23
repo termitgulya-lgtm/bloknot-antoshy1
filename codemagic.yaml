@@ -1,0 +1,22 @@
+workflows:
+  android-apk:
+    name: Блокнот Антоши — Android APK
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      java: 21
+      node: 20
+    scripts:
+      - name: Установка зависимостей
+        script: npm install
+      - name: Создание Android-проекта
+        script: npx cap add android
+      - name: Синхронизация веб-приложения
+        script: npx cap sync android
+      - name: Сборка APK
+        script: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug
+    artifacts:
+      - android/app/build/outputs/apk/debug/*.apk
