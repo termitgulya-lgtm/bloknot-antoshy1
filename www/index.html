@@ -1085,6 +1085,29 @@
       91% { transform: scaleY(.08); }
     }
 
+
+    /* Отдельная область прокрутки внутри неподвижного окна заказа. */
+    body.order-fullscreen .layout > .order-screen {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    body.order-fullscreen .order-screen-header {
+      position: static;
+      flex: 0 0 auto;
+    }
+    body.order-fullscreen .order-screen-scroll {
+      flex: 1 1 0;
+      min-height: 0;
+      min-width: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      touch-action: pan-y;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 12px;
+    }
   </style>
 </head>
 
@@ -2149,6 +2172,7 @@
                 </button>
               </div>
 
+              <div class="order-screen-scroll">
               ${billTabs}
 
               <div class="muted" style="font-size:13px;margin-bottom:8px">
@@ -2172,6 +2196,7 @@
                     Завершить
                   </button>
                 </div>
+              </div>
               </div>
             </section>
           </div>
@@ -2755,8 +2780,14 @@
 
       const app = document.getElementById("app");
 
+      const previousScroll = app.querySelector(".order-screen-scroll");
+      const orderScrollTop = previousScroll ? previousScroll.scrollTop : 0;
       if (view === "tables") {
         app.innerHTML = renderTables();
+        const nextScroll = app.querySelector(".order-screen-scroll");
+        if (nextScroll && document.body.classList.contains("order-fullscreen")) {
+          nextScroll.scrollTop = orderScrollTop;
+        }
       } else if (view === "menu") {
         app.innerHTML = renderMenu();
       } else if (view === "settings") {
