@@ -27,7 +27,7 @@
       --safe-bottom: env(safe-area-inset-bottom, 0px);
     }
     body { padding-top: var(--safe-top); }
-    header { padding-top: max(14px, var(--safe-top)); }
+    header { padding-top: 14px; }
     main { padding-bottom: max(24px, var(--safe-bottom)); }
     @media (max-width: 760px) {
       header {
@@ -72,7 +72,15 @@
       display: flex;
       gap: 8px;
       flex-wrap: wrap;
+      padding: 6px;
+      border: 1px solid rgba(255,255,255,.42);
+      border-radius: 16px;
+      background: rgba(255,255,255,.78);
+      box-shadow: 0 5px 18px rgba(20,55,62,.12);
+      backdrop-filter: blur(12px);
     }
+    nav button { border-radius: 11px; transition: background .18s ease, color .18s ease, transform .18s ease; }
+    nav button.active { background: linear-gradient(135deg,#176b53,#279477); color:#fff; box-shadow:0 3px 9px rgba(23,107,83,.24); }
 
     button {
       border: 0;
@@ -570,9 +578,12 @@
     /* Входящий заказ не перекрывает системную строку Android с часами
        и нижнюю системную панель навигации. */
     .incoming-order-backdrop {
-      inset:var(--safe-top) var(--safe-right, 0px) var(--safe-bottom) var(--safe-left, 0px);
-      padding:12px;
+      inset: max(var(--safe-top), env(safe-area-inset-top, 0px)) max(var(--safe-right, 0px), env(safe-area-inset-right, 0px)) max(var(--safe-bottom), env(safe-area-inset-bottom, 0px)) max(var(--safe-left, 0px), env(safe-area-inset-left, 0px));
+      padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
+      overflow-y: auto;
+      overscroll-behavior: contain;
     }
+    .incoming-order-dialog { max-height: calc(100% - 4px); max-height: min(100%, calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px)); }
     .order-share-dialog,.incoming-order-dialog {
       width:min(100%,480px); max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px); overflow:auto; background:#fff;
       color:#20343b; border-radius:20px; padding:20px;
@@ -721,18 +732,27 @@
       h1 { font-size: 17px; }
 
       nav {
-        gap: 5px;
+        gap: 7px;
         flex-wrap: nowrap;
         width: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        overscroll-behavior-x: contain;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        padding: 6px;
+        border-radius: 14px;
+        scroll-snap-type: x proximity;
       }
-
+      nav::-webkit-scrollbar { display:none; }
       nav button {
-        flex: 1 1 0;
-        min-width: 0;
-        padding: 8px 5px;
+        flex: 0 0 auto;
+        min-width: max-content;
+        padding: 10px 13px;
         font-size: 12px;
-        border-radius: 8px;
+        border-radius: 10px;
         white-space: nowrap;
+        scroll-snap-align: start;
       }
 
       main {
@@ -1187,6 +1207,7 @@
     function setView(nextView) {
       view = nextView;
       render();
+      document.getElementById("nav-" + nextView)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
     }
 
     function addTable() {
@@ -1802,6 +1823,8 @@
       if (!table || !order?.items?.length) return alert("Заказ уже изменён или пуст.");
       const payload = {
         source_table: String(table.number),
+        source_table_id: tableId,
+        source_bill_id: order.id,
         bill_name: order.name || "Полученный заказ",
         comment: order.comment || "",
         items: (order.items || []).map(i => ({ name: i.name, qty: Number(i.qty) || 1, comment: i.comment || "" })),
@@ -2590,6 +2613,35 @@
         }).join("");
     }
 
+    async function syncAcceptedOrdersBackToSender() {
+      if (!cloud || !cloudUser) return;
+      const { data, error } = await cloud.from("waiter_order_messages")
+        .select("id,order_data,accepted_at")
+        .eq("sender_id", cloudUser.id).not("accepted_at", "is", null)
+        .order("accepted_at", { ascending: false }).limit(100);
+      if (error) { console.warn("Accepted orders sync:", error.message); return; }
+      let changed = false;
+      for (const message of (data || [])) {
+        const payload = message.order_data || {};
+        if (!payload.source_table_id || !payload.source_bill_id) continue;
+        const table = state.tables.find(t => t.id === payload.source_table_id);
+        const bills = state.orders?.[payload.source_table_id]?.bills;
+        if (!table || !Array.isArray(bills)) continue;
+        const nextBills = bills.filter(b => b.id !== payload.source_bill_id);
+        if (nextBills.length === bills.length) continue;
+        state.orders[payload.source_table_id].bills = nextBills;
+        if (!nextBills.length) {
+          delete state.orders[payload.source_table_id];
+          state.tables = state.tables.filter(t => t.id !== payload.source_table_id);
+          if (selectedTableId === payload.source_table_id) selectedTableId = null;
+        } else if (state.orders[payload.source_table_id].activeBillId === payload.source_bill_id) {
+          state.orders[payload.source_table_id].activeBillId = nextBills[nextBills.length - 1].id;
+        }
+        changed = true;
+      }
+      if (changed) { save(); if (view === "tables") render(); }
+    }
+
     async function loadSentOrders() {
       if (!cloud || !cloudUser) { sentOrdersCache = []; if (view === "sent") render(); return; }
       const { data, error } = await cloud.from("waiter_order_messages")
@@ -2598,6 +2650,7 @@
         .order("created_at", { ascending: false }).limit(100);
       if (error) { console.warn("Sent orders:", error.message); return; }
       sentOrdersCache = data || [];
+      await syncAcceptedOrdersBackToSender();
       if (view === "sent") {
         const app = document.getElementById("app");
         if (app) app.innerHTML = renderSentOrders();
