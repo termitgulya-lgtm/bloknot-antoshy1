@@ -1057,6 +1057,7 @@
       <button id="nav-tables" onclick="setView('tables')">Столы и заказы</button>
       <button id="nav-menu" onclick="setView('menu')">Меню</button>
       <button id="nav-archive" onclick="setView('archive')">Архив</button>
+      <button id="nav-sent" onclick="setView('sent')">Отправленные заказы</button>
       <button id="nav-settings" onclick="setView('settings')">⚙ Настройки</button>
     </nav>
   </header>
@@ -1094,6 +1095,8 @@
     let cloudBusy = false;
     let orderInboxChannel = null;
     let orderInboxPoll = null;
+    let sentOrdersCache = [];
+    let sentOrdersPoll = null;
     const shownIncomingOrderIds = new Set();
 
     let pendingInvitations = [];
@@ -1830,32 +1833,35 @@
     }
 
     async function acceptIncomingOrder(messageId) {
-      const { data: msg, error } = await cloud.from("waiter_order_messages")
-        .select("id,order_data,sender_name").eq("id", messageId).maybeSingle();
-      if (error || !msg) return alert("Не удалось получить заказ. Возможно, отправитель удалил его.");
+      if (!cloud || !cloudUser) return alert("Требуется подключение к группе.");
+      const { data: msg, error } = await cloud.rpc("accept_waiter_order", { p_message_id: messageId });
+      if (error || !msg) return alert("Не удалось принять заказ: " + (error?.message || "заказ не найден"));
       const payload = msg.order_data || {};
-      const tableNumber = String(payload.source_table || "Полученный");
-      let table = state.tables.find(t => String(t.number) === tableNumber);
-      if (!table) {
-        table = { id: makeId(), number: tableNumber };
-        state.tables.push(table);
+      const alreadyAdded = Object.values(state.orders || {}).some(o =>
+        (o.bills || []).some(b => b.sourceMessageId === messageId)
+      );
+      if (!alreadyAdded) {
+        const tableNumber = String(payload.source_table || "Полученный");
+        let table = state.tables.find(t => String(t.number) === tableNumber);
+        if (!table) {
+          table = { id: makeId(), number: tableNumber };
+          state.tables.push(table);
+        }
+        const bills = getTableBills(table.id);
+        const bill = {
+          id: makeId(), sourceMessageId: messageId,
+          name: `${payload.bill_name || "Полученный заказ"} · от ${msg.sender_name || "коллеги"}`,
+          items: (payload.items || []).map(i => ({ menuItemId: null, name: String(i.name || "Блюдо"), qty: Math.max(1, Number(i.qty) || 1), comment: String(i.comment || "") })),
+          comment: payload.comment || ""
+        };
+        bills.push(bill);
+        state.orders[table.id].activeBillId = bill.id;
+        save();
       }
-      const bills = getTableBills(table.id);
-      const bill = {
-        id: makeId(),
-        name: `${payload.bill_name || "Полученный заказ"} · от ${msg.sender_name || "коллеги"}`,
-        items: (payload.items || []).map(i => ({ menuItemId: null, name: String(i.name || "Блюдо"), qty: Math.max(1, Number(i.qty) || 1), comment: String(i.comment || "") })),
-        comment: payload.comment || ""
-      };
-      bills.push(bill);
-      state.orders[table.id].activeBillId = bill.id;
-      save();
-      await cloud.from("waiter_order_messages").update({ read_at: new Date().toISOString() }).eq("id", messageId);
       document.getElementById("incoming-order-" + messageId)?.remove();
-      selectedTableId = table.id;
-      view = "tables";
-      render();
-      alert("Заказ добавлен отдельным счётом. Существующие счета не изменены.");
+      selectedTableId = state.tables.find(t => (state.orders[t.id]?.bills || []).some(b => b.sourceMessageId === messageId))?.id || null;
+      view = "tables"; render();
+      alert(alreadyAdded ? "Этот заказ уже был добавлен ранее." : "Заказ принят и добавлен отдельным счётом. Отправитель увидит статус «Принят».");
     }
 
     async function dismissIncomingOrder(messageId) {
@@ -1866,8 +1872,8 @@
     async function checkIncomingOrders() {
       if (!cloudUser || !cloudGroup || !cloud) return;
       const { data, error } = await cloud.from("waiter_order_messages")
-        .select("id,sender_name,order_data,created_at")
-        .eq("recipient_id", cloudUser.id).is("read_at", null)
+        .select("id,sender_name,order_data,created_at,accepted_at")
+        .eq("recipient_id", cloudUser.id).is("read_at", null).is("accepted_at", null)
         .order("created_at", { ascending: true }).limit(10);
       if (error) { console.warn("Inbox check:", error.message); return; }
       (data || []).forEach(showIncomingOrder);
@@ -1879,16 +1885,24 @@
         orderInboxChannel = null;
         if (orderInboxPoll) clearInterval(orderInboxPoll);
         orderInboxPoll = null;
+        if (sentOrdersPoll) clearInterval(sentOrdersPoll);
+        sentOrdersPoll = null;
         return;
       }
       if (orderInboxChannel) cloud.removeChannel(orderInboxChannel);
       orderInboxChannel = cloud.channel("waiter-orders-" + cloudUser.id)
         .on("postgres_changes", { event: "INSERT", schema: "public", table: "waiter_order_messages", filter: "recipient_id=eq." + cloudUser.id }, payload => {
           showIncomingOrder(payload.new);
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "waiter_order_messages", filter: "sender_id=eq." + cloudUser.id }, () => {
+          loadSentOrders();
         }).subscribe();
       checkIncomingOrders();
+      loadSentOrders();
       if (orderInboxPoll) clearInterval(orderInboxPoll);
       orderInboxPoll = setInterval(checkIncomingOrders, 12000);
+      if (sentOrdersPoll) clearInterval(sentOrdersPoll);
+      sentOrdersPoll = setInterval(loadSentOrders, 15000);
     }
 
     function finishOrder(tableId) {
@@ -2547,6 +2561,42 @@
       render();
     }
 
+    function renderSentOrders() {
+      const rows = sentOrdersCache || [];
+      if (!cloudUser) return `<div class="toolbar"><h2>Отправленные заказы</h2></div><div class="empty">Войдите в группу официантов, чтобы видеть отправленные заказы.</div>`;
+      if (!rows.length) return `<div class="toolbar"><h2>Отправленные заказы</h2></div><div class="empty">Вы ещё не отправляли заказы коллегам.</div>`;
+      return `<div class="toolbar"><h2>Отправленные заказы</h2><button onclick="loadSentOrders()">Обновить</button></div>` +
+        rows.map(m => {
+          const d = m.order_data || {}, accepted = !!m.accepted_at;
+          const dt = new Date(accepted ? m.accepted_at : m.created_at);
+          const time = Number.isNaN(dt.getTime()) ? "" : new Intl.DateTimeFormat("ru-RU",{dateStyle:"short",timeStyle:"short"}).format(dt);
+          const items = (d.items || []).map(i => `<p>• ${esc(i.name)} × ${Number(i.qty)||1}</p>`).join("");
+          return `<section class="card" style="margin-bottom:12px;padding:14px">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+              <strong>Стол №${esc(d.source_table || "—")}</strong>
+              <strong style="color:${accepted ? '#16834a' : '#a66b00'}">${accepted ? 'Принят' : 'Ожидает принятия'}</strong>
+            </div>
+            <p>${accepted ? `Получатель: ${esc(m.recipient_name || 'Официант')}` : `Кому отправлен: ${esc(m.recipient_name || 'Официант')}`}</p>
+            <small>${accepted ? 'Принят' : 'Отправлен'}: ${esc(time)}</small>
+            <div style="margin-top:8px">${items}</div>
+            ${d.comment ? `<p>Комментарий: ${esc(d.comment)}</p>` : ""}
+          </section>`;
+        }).join("");
+    }
+
+    async function loadSentOrders() {
+      if (!cloud || !cloudUser) { sentOrdersCache = []; if (view === "sent") render(); return; }
+      const { data, error } = await cloud.from("waiter_order_messages")
+        .select("id,recipient_name,order_data,created_at,accepted_at,accepted_by")
+        .eq("sender_id", cloudUser.id).order("created_at", { ascending: false }).limit(100);
+      if (error) { console.warn("Sent orders:", error.message); return; }
+      sentOrdersCache = data || [];
+      if (view === "sent") {
+        const app = document.getElementById("app");
+        if (app) app.innerHTML = renderSentOrders();
+      }
+    }
+
     function renderArchive() {
       if (!state.archive.length) {
         return `
@@ -2636,6 +2686,9 @@
         app.innerHTML = renderMenu();
       } else if (view === "settings") {
         app.innerHTML = renderSettings();
+      } else if (view === "sent") {
+        app.innerHTML = renderSentOrders();
+        loadSentOrders();
       } else {
         app.innerHTML = renderArchive();
       }
