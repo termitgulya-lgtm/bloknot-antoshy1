@@ -3,7 +3,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Блокнот официанта</title>
   <style>
     :root {
@@ -20,6 +20,26 @@
     }
 
     * { box-sizing: border-box; }
+
+    /* Безопасные отступы системных панелей Android/iOS */
+    :root {
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    body { padding-top: var(--safe-top); }
+    header { padding-top: max(14px, var(--safe-top)); }
+    main { padding-bottom: max(24px, var(--safe-bottom)); }
+    @media (max-width: 760px) {
+      header {
+        padding-left: max(14px, env(safe-area-inset-left, 0px));
+        padding-right: max(14px, env(safe-area-inset-right, 0px));
+      }
+      main {
+        padding-left: max(12px, env(safe-area-inset-left, 0px));
+        padding-right: max(12px, env(safe-area-inset-right, 0px));
+      }
+    }
+
 
     body {
       margin: 0;
@@ -540,6 +560,56 @@
       overflow: visible;
     }
 
+
+
+    .order-share-backdrop,.incoming-order-backdrop {
+      position:fixed; inset:0; z-index:10001; display:flex; align-items:center;
+      justify-content:center; padding:16px; background:rgba(10,28,33,.58);
+      backdrop-filter:blur(5px);
+    }
+    .order-share-dialog,.incoming-order-dialog {
+      width:min(100%,480px); max-height:86dvh; overflow:auto; background:#fff;
+      color:#20343b; border-radius:20px; padding:20px;
+      box-shadow:0 20px 60px rgba(0,0,0,.25);
+    }
+    .order-share-dialog h3,.incoming-order-dialog h3 { margin:0 0 8px; font-size:20px; }
+    .order-share-dialog p,.incoming-order-dialog p { color:#60777d; line-height:1.45; }
+    .order-recipient {
+      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      width:100%; padding:13px 14px; margin:8px 0; border:1px solid #dce8e5;
+      border-radius:13px; background:#f8fbfa; color:#20343b; text-align:left;
+    }
+    .order-recipient small { display:block; color:#70868a; margin-top:3px; }
+    .order-dialog-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+    .order-dialog-actions button { flex:1 1 120px; }
+    .incoming-order-items { background:#f4f8f7; border-radius:12px; padding:12px; margin-top:12px; }
+    .incoming-order-items p { margin:5px 0; color:#29464c; }
+
+    .waiter-member-row {
+      width: 100%; display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; text-align: left; padding: 12px 14px; margin: 6px 0;
+      border: 1px solid #e1e9e8; border-radius: 13px; background: rgba(255,255,255,.92);
+      color: #20343b; box-shadow: 0 3px 12px rgba(12,45,54,.06);
+    }
+    .waiter-member-row span:first-child { display:flex; flex-direction:column; gap:3px; }
+    .waiter-member-row small { color:#668087; font-size:12px; font-weight:500; }
+    .member-chevron { font-size:24px; color:#63817e; }
+    .waiter-profile-backdrop {
+      position:fixed; inset:0; z-index:9999; display:flex; align-items:center;
+      justify-content:center; padding:18px; background:rgba(12,29,34,.55);
+      backdrop-filter:blur(4px);
+    }
+    .waiter-profile-dialog {
+      width:min(100%,440px); max-height: min(85dvh, 680px); overflow:auto;
+      background:#fff; color:#20343b; border-radius:20px; padding:22px;
+      box-shadow:0 20px 60px rgba(0,0,0,.25);
+    }
+    .waiter-profile-dialog h3 { font-size:20px; margin:0 0 16px; }
+    .waiter-profile-field { padding:11px 0; border-bottom:1px solid #edf1f0; }
+    .waiter-profile-field small { display:block; color:#70868a; margin-bottom:4px; }
+    .waiter-profile-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:18px; }
+    .waiter-profile-actions button { flex:1 1 130px; }
+
     .settings-wrap {
       width: min(100%, 820px);
       margin: 0 auto;
@@ -1022,6 +1092,10 @@
     let cloudRole = null;
     let cloudMessage = "";
     let cloudBusy = false;
+    let orderInboxChannel = null;
+    let orderInboxPoll = null;
+    const shownIncomingOrderIds = new Set();
+
     let pendingInvitations = [];
 
     function emptyState() {
@@ -1640,64 +1714,181 @@
     async function shareOrder(tableId) {
       const table = state.tables.find(t => t.id === tableId);
       const order = getActiveBill(tableId);
-
       if (!table || !order || !order.items?.length) {
         alert("В этом счёте пока нет позиций для отправки.");
         return;
       }
 
-      const lines = [
-        `Заказ — стол №${table.number}`,
-        order.name || "Счёт",
-        ""
-      ];
-
-      order.items.forEach(item => {
-        lines.push(`${item.name} — ${item.qty} шт.`);
-        if (item.comment?.trim()) {
-          lines.push(`  Комментарий: ${item.comment.trim()}`);
-        }
-      });
-
-      if (order.comment?.trim()) {
-        lines.push("", `Комментарий к счёту: ${order.comment.trim()}`);
+      if (cloudUser && cloudGroup) {
+        await openOrderRecipientPicker(tableId);
+        return;
       }
 
-      const message = lines.join("\n");
+      const message = buildOrderText(table, order);
       const title = `Заказ — стол №${table.number}`;
-
       if (navigator.share) {
-        try {
-          await navigator.share({ title, text: message });
-          return;
-        } catch (error) {
-          // Отмена пользователем — нормальный сценарий, ничего не делаем.
-          if (error?.name === "AbortError") return;
-          // При ошибке системного меню пробуем скопировать текст.
-        }
+        try { await navigator.share({ title, text: message }); return; }
+        catch (error) { if (error?.name === "AbortError") return; }
       }
-
       try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(message);
-        } else {
+        if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(message);
+        else {
           const textarea = document.createElement("textarea");
-          textarea.value = message;
-          textarea.setAttribute("readonly", "");
-          textarea.style.position = "fixed";
-          textarea.style.opacity = "0";
-          document.body.appendChild(textarea);
-          textarea.select();
-          const copied = document.execCommand("copy");
-          textarea.remove();
+          textarea.value = message; textarea.setAttribute("readonly", "");
+          textarea.style.position = "fixed"; textarea.style.opacity = "0";
+          document.body.appendChild(textarea); textarea.select();
+          const copied = document.execCommand("copy"); textarea.remove();
           if (!copied) throw new Error("Не удалось скопировать текст");
         }
-        alert("Текст заказа скопирован. Его можно вставить в мессенджер.");
-      } catch {
-        // Последний резервный вариант для браузеров с ограниченным доступом
-        // к буферу обмена.
-        prompt("Скопируйте текст заказа:", message);
+        alert("Текст заказа скопирован. Можно отправить его через мессенджер.");
+      } catch { prompt("Скопируйте текст заказа:", message); }
+    }
+
+    function buildOrderText(table, order) {
+      const lines = [`Заказ — стол №${table.number}`, order.name || "Счёт", ""];
+      (order.items || []).forEach(item => {
+        lines.push(`${item.name} — ${item.qty} шт.`);
+        if (item.comment?.trim()) lines.push(`  Комментарий: ${item.comment.trim()}`);
+      });
+      if (order.comment?.trim()) lines.push("", `Комментарий к счёту: ${order.comment.trim()}`);
+      return lines.join("\n");
+    }
+
+    async function openOrderRecipientPicker(tableId) {
+      if (!cloudUser || !cloudGroup) return alert("Для отправки заказа напрямую нужно войти в группу официантов.");
+      const { data: members, error } = await cloud.from("waiter_group_members")
+        .select("user_id,role").eq("group_id", cloudGroup.id);
+      if (error) return alert("Не удалось загрузить список официантов: " + error.message);
+      const ids = (members || []).filter(m => m.user_id !== cloudUser.id).map(m => m.user_id);
+      const { data: profiles, error: profileError } = ids.length
+        ? await cloud.from("waiter_profiles").select("user_id,full_name,phone").in("user_id", ids)
+        : { data: [], error: null };
+      if (profileError) return alert("Не удалось загрузить анкеты официантов: " + profileError.message);
+      const byId = Object.fromEntries((profiles || []).map(p => [p.user_id, p]));
+      const backdrop = document.createElement("div");
+      backdrop.className = "order-share-backdrop";
+      backdrop.id = "order-share-backdrop";
+      const rows = (members || []).filter(m => m.user_id !== cloudUser.id).map(m => {
+        const p = byId[m.user_id] || {};
+        return `<button class="order-recipient" onclick="sendOrderToWaiter('${tableId}','${m.user_id}')">
+          <span><strong>${esc(p.full_name || "Официант без имени")}</strong><small>${m.role === "admin" ? "Администратор" : "Официант"}${p.phone ? " · " + esc(p.phone) : ""}</small></span>
+          <span>Отправить →</span>
+        </button>`;
+      }).join("") || `<p>В группе пока нет других официантов.</p>`;
+      backdrop.innerHTML = `<section class="order-share-dialog" role="dialog" aria-modal="true">
+        <h3>Кому отправить заказ?</h3>
+        <p>Выберите официанта. Заказ поступит прямо в его приложение.</p>
+        ${rows}
+        <div class="order-dialog-actions"><button onclick="closeOrderShareDialog()">Отмена</button></div>
+      </section>`;
+      backdrop.addEventListener("click", e => { if (e.target === backdrop) closeOrderShareDialog(); });
+      document.body.appendChild(backdrop);
+    }
+
+    function closeOrderShareDialog() { document.getElementById("order-share-backdrop")?.remove(); }
+
+    async function sendOrderToWaiter(tableId, recipientId) {
+      const table = state.tables.find(t => t.id === tableId);
+      const order = getActiveBill(tableId);
+      if (!table || !order?.items?.length) return alert("Заказ уже изменён или пуст.");
+      const payload = {
+        source_table: String(table.number),
+        bill_name: order.name || "Полученный заказ",
+        comment: order.comment || "",
+        items: (order.items || []).map(i => ({ name: i.name, qty: Number(i.qty) || 1, comment: i.comment || "" })),
+        sender_name: cloudProfile?.full_name || cloudUser.email || "Официант"
+      };
+      const { error } = await cloud.rpc("send_waiter_order", {
+        p_recipient_id: recipientId,
+        p_order_data: payload
+      });
+      if (error) return alert("Не удалось отправить заказ: " + error.message);
+      closeOrderShareDialog();
+      alert("Заказ отправлен. Он появится в приложении выбранного официанта.");
+    }
+
+    function showIncomingOrder(message) {
+      if (!message?.id || shownIncomingOrderIds.has(message.id)) return;
+      shownIncomingOrderIds.add(message.id);
+      const data = message.order_data || {};
+      const itemsHtml = (data.items || []).map(i =>
+        `<p>• ${esc(i.name)} × ${Number(i.qty) || 1}${i.comment ? " — " + esc(i.comment) : ""}</p>`
+      ).join("");
+      const backdrop = document.createElement("div");
+      backdrop.className = "incoming-order-backdrop";
+      backdrop.id = "incoming-order-" + message.id;
+      backdrop.innerHTML = `<section class="incoming-order-dialog" role="dialog" aria-modal="true">
+        <h3>Новый заказ от коллеги</h3>
+        <p><strong>${esc(message.sender_name || "Официант")}</strong> отправил заказ со стола №${esc(data.source_table || "—")}.</p>
+        <div class="incoming-order-items">${itemsHtml || "<p>Список блюд пуст.</p>"}${data.comment ? `<p><strong>Комментарий:</strong> ${esc(data.comment)}</p>` : ""}</div>
+        <div class="order-dialog-actions">
+          <button class="primary" onclick="acceptIncomingOrder('${message.id}')">Принять заказ</button>
+          <button onclick="dismissIncomingOrder('${message.id}')">Позже</button>
+        </div>
+      </section>`;
+      document.body.appendChild(backdrop);
+    }
+
+    async function acceptIncomingOrder(messageId) {
+      const { data: msg, error } = await cloud.from("waiter_order_messages")
+        .select("id,order_data,sender_name").eq("id", messageId).maybeSingle();
+      if (error || !msg) return alert("Не удалось получить заказ. Возможно, отправитель удалил его.");
+      const payload = msg.order_data || {};
+      const tableNumber = String(payload.source_table || "Полученный");
+      let table = state.tables.find(t => String(t.number) === tableNumber);
+      if (!table) {
+        table = { id: makeId(), number: tableNumber };
+        state.tables.push(table);
       }
+      const bills = getTableBills(table.id);
+      const bill = {
+        id: makeId(),
+        name: `${payload.bill_name || "Полученный заказ"} · от ${msg.sender_name || "коллеги"}`,
+        items: (payload.items || []).map(i => ({ menuItemId: null, name: String(i.name || "Блюдо"), qty: Math.max(1, Number(i.qty) || 1), comment: String(i.comment || "") })),
+        comment: payload.comment || ""
+      };
+      bills.push(bill);
+      state.orders[table.id].activeBillId = bill.id;
+      save();
+      await cloud.from("waiter_order_messages").update({ read_at: new Date().toISOString() }).eq("id", messageId);
+      document.getElementById("incoming-order-" + messageId)?.remove();
+      selectedTableId = table.id;
+      view = "tables";
+      render();
+      alert("Заказ добавлен отдельным счётом. Существующие счета не изменены.");
+    }
+
+    async function dismissIncomingOrder(messageId) {
+      await cloud.from("waiter_order_messages").update({ read_at: new Date().toISOString() }).eq("id", messageId);
+      document.getElementById("incoming-order-" + messageId)?.remove();
+    }
+
+    async function checkIncomingOrders() {
+      if (!cloudUser || !cloudGroup || !cloud) return;
+      const { data, error } = await cloud.from("waiter_order_messages")
+        .select("id,sender_name,order_data,created_at")
+        .eq("recipient_id", cloudUser.id).is("read_at", null)
+        .order("created_at", { ascending: true }).limit(10);
+      if (error) { console.warn("Inbox check:", error.message); return; }
+      (data || []).forEach(showIncomingOrder);
+    }
+
+    function startOrderInbox() {
+      if (!cloud || !cloudUser || !cloudGroup) {
+        if (orderInboxChannel) cloud.removeChannel(orderInboxChannel);
+        orderInboxChannel = null;
+        if (orderInboxPoll) clearInterval(orderInboxPoll);
+        orderInboxPoll = null;
+        return;
+      }
+      if (orderInboxChannel) cloud.removeChannel(orderInboxChannel);
+      orderInboxChannel = cloud.channel("waiter-orders-" + cloudUser.id)
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "waiter_order_messages", filter: "recipient_id=eq." + cloudUser.id }, payload => {
+          showIncomingOrder(payload.new);
+        }).subscribe();
+      checkIncomingOrders();
+      if (orderInboxPoll) clearInterval(orderInboxPoll);
+      orderInboxPoll = setInterval(checkIncomingOrders, 12000);
     }
 
     function finishOrder(tableId) {
@@ -2122,9 +2313,10 @@
       const menuSyncBlock = cloudUser && cloudGroup ? `
         <div class="settings-card">
           <h3>Общее меню группы</h3>
-          <p class="profile-note">${cloudRole === "admin" ? "Администратор может отправить текущее меню всем участникам. Официанты могут загрузить общее меню на свой телефон." : "Загрузите актуальное меню, опубликованное администратором."}</p>
+          ${cloudRole === "admin" ? `<p class="profile-note">Администратор может отправить текущее меню всем участникам. Официанты смогут загрузить общее меню на свой телефон.</p>` : ""}
           ${cloudRole === "admin" ? `<button class="primary" onclick="publishSharedMenu()">Опубликовать моё меню для группы</button>` : ""}
-          <button style="margin-top:8px" onclick="downloadSharedMenu()">Загрузить общее меню</button>
+          <button style="margin-top:8px" onclick="downloadSharedMenu()">Загрузить / обновить общее меню</button>
+          <p class="profile-note">Эту кнопку можно использовать повторно, когда администратор обновит меню.</p>
         </div>` : "";
 
       return `<div class="settings-wrap">
@@ -2182,6 +2374,7 @@
         }
       }
       render();
+      startOrderInbox();
     }
 
     async function saveCloudProfile() {
@@ -2219,23 +2412,57 @@
       const ids = (data || []).map(m => m.user_id);
       const { data: profiles } = ids.length ? await cloud.from("waiter_profiles").select("user_id,full_name,phone").in("user_id", ids) : { data: [] };
       const byId = Object.fromEntries((profiles || []).map(p => [p.user_id, p]));
+      window.waiterGroupProfiles = byId;
+      window.waiterGroupMembers = data || [];
       const box = document.getElementById("cloud-members");
       if (box) box.innerHTML = (data || []).map(m => {
         const isSelf = m.user_id === cloudUser.id;
-        const title = `${esc(byId[m.user_id]?.full_name || "Участник без имени")} — ${m.role === "admin" ? "администратор" : "официант"}${isSelf ? " (вы)" : ""}`;
-        const remove = cloudRole === "admin" && !isSelf && m.role !== "admin"
-          ? `<button class="small" style="margin:4px 0 8px;background:#fff0ed;color:#a33325;border:1px solid #efc4bd" onclick="removeWaiterFromGroup('${m.user_id}')">Удалить из группы</button>`
-          : "";
-        return `<div style="padding:9px 0;border-top:1px solid var(--line)"><strong>${title}</strong><br>${remove}</div>`;
+        const profile = byId[m.user_id] || {};
+        const title = `${esc(profile.full_name || "Участник без имени")}`;
+        const role = m.role === "admin" ? "Администратор" : "Официант";
+        return `<button type="button" class="waiter-member-row" onclick="openWaiterProfile('${m.user_id}')">
+          <span><strong>${title}${isSelf ? " (вы)" : ""}</strong><small>${role}</small></span>
+          <span aria-hidden="true" class="member-chevron">›</span>
+        </button>`;
       }).join("") || "Участников пока нет.";
     }
 
-    async function removeWaiterFromGroup(userId) {
+    function openWaiterProfile(userId) {
+      const member = (window.waiterGroupMembers || []).find(m => m.user_id === userId);
+      if (!member) return;
+      const profile = (window.waiterGroupProfiles || {})[userId] || {};
+      const isSelf = userId === cloudUser?.id;
+      const canRemove = cloudRole === "admin" && !isSelf && member.role !== "admin";
+      const backdrop = document.createElement("div");
+      backdrop.className = "waiter-profile-backdrop";
+      backdrop.id = "waiter-profile-backdrop";
+      backdrop.innerHTML = `<section class="waiter-profile-dialog" role="dialog" aria-modal="true" aria-labelledby="waiter-profile-title">
+        <h3 id="waiter-profile-title">Анкета официанта</h3>
+        <div class="waiter-profile-field"><small>Имя и фамилия</small><strong>${esc(profile.full_name || "Не указано")}</strong></div>
+        <div class="waiter-profile-field"><small>Номер телефона</small><strong>${esc(profile.phone || "Не указан")}</strong></div>
+        <div class="waiter-profile-field"><small>Роль в группе</small><strong>${member.role === "admin" ? "Администратор" : "Официант"}</strong></div>
+        <div class="waiter-profile-actions">
+          ${canRemove ? `<button class="danger" onclick="removeWaiterFromGroup('${userId}', true)">Удалить из группы</button>` : ""}
+          <button onclick="closeWaiterProfile()">Закрыть</button>
+        </div>
+      </section>`;
+      backdrop.addEventListener("click", event => {
+        if (event.target === backdrop) closeWaiterProfile();
+      });
+      document.body.appendChild(backdrop);
+    }
+
+    function closeWaiterProfile() {
+      document.getElementById("waiter-profile-backdrop")?.remove();
+    }
+
+    async function removeWaiterFromGroup(userId, fromProfile = false) {
       if (!isCloudAdmin()) return alert("Удалять участников может только администратор.");
       if (!userId || userId === cloudUser.id) return alert("Нельзя удалить самого себя этой кнопкой. Используйте «Выйти из группы».");
       if (!confirm("Удалить этого официанта из группы? Он потеряет доступ к общему меню и участникам. Его личные заказы останутся.")) return;
       const { error } = await cloud.rpc("admin_remove_waiter_from_group", { p_user_id: userId });
       if (error) return alert("Не удалось удалить участника: " + error.message);
+      closeWaiterProfile();
       cloudMessage = "Официант удалён из группы.";
       await refreshCloudSession();
       if (cloudGroup) await refreshCloudGroup();
@@ -2315,7 +2542,9 @@
       state.categories = cats.map(c => { const id = makeId(); localId[c.id] = id; return { id, name: c.name }; });
       state.menu = (items || []).filter(i => i.is_available && localId[i.category_id]).map(i => ({ id: makeId(), categoryId: localId[i.category_id], name: i.name }));
       expandedCategoryId = state.categories[0]?.id || null;
-      save(); cloudMessage = "Общее меню загружено на это устройство. Заказы не затронуты."; render();
+      save();
+      cloudMessage = "Общее меню загружено/обновлено на этом устройстве. Кнопка загрузки останется доступной; заказы не затронуты.";
+      render();
     }
 
     function renderArchive() {
