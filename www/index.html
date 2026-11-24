@@ -1064,6 +1064,50 @@
       -webkit-overflow-scrolling: touch;
       padding: 12px 12px 24px;
     }
+
+    /* Высота вкладки зависит от реальной высоты шапки и списка столов. */
+    @media (max-width: 900px) {
+      html.tables-page, body.tables-page {
+        height: 100%;
+        overflow: hidden;
+      }
+      body.tables-page {
+        height: 100dvh;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        padding-bottom: max(8px, var(--safe-bottom));
+      }
+      body.tables-page.android-tables {
+        padding-bottom: max(32px, var(--safe-bottom));
+      }
+      body.tables-page > header { flex: 0 0 auto; }
+      body.tables-page > #app {
+        flex: 1 1 0;
+        width: 100%;
+        height: auto;
+        min-height: 0;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      body.tables-page #app > :not(.layout) { flex: 0 0 auto; }
+      body.tables-page #app > .layout {
+        flex: 1 1 0;
+        height: auto;
+        min-height: 0;
+        grid-template-rows: minmax(0, 1fr);
+      }
+      body.tables-page #app .layout > .card {
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 16px;
+      }
+    }
   </style>
 </head>
 
@@ -2760,6 +2804,9 @@
     }
 
     function render() {
+      document.documentElement.classList.toggle("tables-page", view === "tables");
+      document.body.classList.toggle("tables-page", view === "tables");
+      document.body.classList.toggle("android-tables", /Android/i.test(navigator.userAgent));
       document.documentElement.classList.toggle("menu-page", view === "menu");
       document.body.classList.toggle("menu-page", view === "menu");
       document.documentElement.classList.toggle("settings-page", view === "settings");
