@@ -13,6 +13,9 @@ workflows:
         script: npx cap add android
       - name: Синхронизация веб-приложения
         script: npx cap sync android
+      - name: Установка иконки 50th Parallel
+        script: |
+          cp -R app-icons/. android/app/src/main/res/
       - name: Сборка APK
         script: |
           cd android
