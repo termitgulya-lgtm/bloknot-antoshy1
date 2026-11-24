@@ -567,8 +567,14 @@
       justify-content:center; padding:16px; background:rgba(10,28,33,.58);
       backdrop-filter:blur(5px);
     }
+    /* Входящий заказ не перекрывает системную строку Android с часами
+       и нижнюю системную панель навигации. */
+    .incoming-order-backdrop {
+      inset:var(--safe-top) var(--safe-right, 0px) var(--safe-bottom) var(--safe-left, 0px);
+      padding:12px;
+    }
     .order-share-dialog,.incoming-order-dialog {
-      width:min(100%,480px); max-height:86dvh; overflow:auto; background:#fff;
+      width:min(100%,480px); max-height:calc(100dvh - var(--safe-top) - var(--safe-bottom) - 24px); overflow:auto; background:#fff;
       color:#20343b; border-radius:20px; padding:20px;
       box-shadow:0 20px 60px rgba(0,0,0,.25);
     }
@@ -2588,7 +2594,8 @@
       if (!cloud || !cloudUser) { sentOrdersCache = []; if (view === "sent") render(); return; }
       const { data, error } = await cloud.from("waiter_order_messages")
         .select("id,recipient_name,order_data,created_at,accepted_at,accepted_by")
-        .eq("sender_id", cloudUser.id).order("created_at", { ascending: false }).limit(100);
+        .eq("sender_id", cloudUser.id).is("accepted_at", null)
+        .order("created_at", { ascending: false }).limit(100);
       if (error) { console.warn("Sent orders:", error.message); return; }
       sentOrdersCache = data || [];
       if (view === "sent") {
