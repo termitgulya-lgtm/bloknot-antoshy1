@@ -518,6 +518,100 @@
       border-bottom: 1px solid var(--line);
     }
 
+
+    /* Настройки: отдельная прокручиваемая страница с аккуратными карточками */
+    html.settings-page,
+    body.settings-page {
+      min-height: 100%;
+      height: auto;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+
+    body.settings-page main {
+      height: auto;
+      min-height: calc(100dvh - 90px);
+      overflow: visible;
+      padding-bottom: max(28px, env(safe-area-inset-bottom));
+    }
+
+    body.settings-page #app {
+      min-height: 100%;
+      overflow: visible;
+    }
+
+    .settings-wrap {
+      width: min(100%, 820px);
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+      padding: 4px 0 28px;
+    }
+
+    .settings-wrap .toolbar {
+      margin: 2px 0 4px;
+      padding: 4px 2px;
+    }
+
+    .settings-wrap .settings-card {
+      background: rgba(255,255,255,.94);
+      border: 1px solid rgba(255,255,255,.72);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 8px 24px rgba(12,45,54,.12);
+      backdrop-filter: blur(8px);
+      min-width: 0;
+    }
+
+    .settings-wrap .settings-card h3 {
+      color: #173b45;
+      margin-bottom: 12px;
+      font-size: 17px;
+    }
+
+    .settings-wrap .settings-card p {
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .settings-wrap .settings-card label {
+      display: block;
+      margin: 10px 0 6px;
+      color: #38545b;
+      font-weight: 650;
+      font-size: 13px;
+    }
+
+    .settings-wrap .settings-card input {
+      width: 100%;
+      min-width: 0;
+      min-height: 42px;
+      border: 1px solid #cbd9d8;
+      border-radius: 10px;
+      padding: 9px 11px;
+      background: #fff;
+      color: #20343b;
+      font: inherit;
+    }
+
+    .settings-wrap .settings-card button {
+      min-height: 40px;
+      border-radius: 11px;
+      margin-top: 8px;
+    }
+
+    .settings-wrap .settings-card hr {
+      border: 0;
+      border-top: 1px solid #e1e9e8 !important;
+    }
+
+    .settings-wrap .profile-note {
+      color: #557078;
+    }
+
+    nav button { transition: background .18s ease, transform .18s ease; }
+    nav button:active { transform: scale(.97); }
+
     @media (max-width: 760px) {
       html, body {
         min-height: 100%;
@@ -893,6 +987,7 @@
       <button id="nav-tables" onclick="setView('tables')">Столы и заказы</button>
       <button id="nav-menu" onclick="setView('menu')">Меню</button>
       <button id="nav-archive" onclick="setView('archive')">Архив</button>
+      <button id="nav-settings" onclick="setView('settings')">⚙ Настройки</button>
     </nav>
   </header>
 
@@ -912,8 +1007,22 @@
     </div>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const STORAGE_KEY = "waiter-notebook-v1";
+    // Публичные параметры проекта Supabase. Secret/service_role key здесь не используется.
+    const SUPABASE_URL = "https://bukmzdsoujqirnfanaze.supabase.co";
+    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_W1TM2FCEt_36Wt53CLwv6A_ZFHLIXK7";
+    const cloud = window.supabase?.createClient
+      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
+      : null;
+    let cloudUser = null;
+    let cloudProfile = null;
+    let cloudGroup = null;
+    let cloudRole = null;
+    let cloudMessage = "";
+    let cloudBusy = false;
+    let pendingInvitations = [];
 
     function emptyState() {
       return {
@@ -1859,7 +1968,7 @@
                 </span>
               </h3>
 
-              <div class="actions">
+              ${isCloudAdmin() ? `<div class="actions">
                 <button class="small"
                   onclick="addMenuItem('${category.id}')">
                   ＋ Позиция
@@ -1874,7 +1983,7 @@
                   onclick="deleteCategory('${category.id}')">
                   Удалить
                 </button>
-              </div>
+              </div>` : `<span class="profile-note">Только просмотр</span>`}
             </div>
 
             ${isCollapsed ? "" : (
@@ -1885,7 +1994,7 @@
                         <div class="item-title">${esc(item.name)}</div>
                             </div>
 
-                      <div class="actions">
+                      ${isCloudAdmin() ? `<div class="actions">
                         <button class="small"
                           onclick="editMenuItem('${item.id}')">
                           Редактировать
@@ -1895,7 +2004,7 @@
                           onclick="deleteMenuItem('${item.id}')">
                           Удалить
                         </button>
-                      </div>
+                      </div>` : ``}
                     </div>
                   `).join("")
                 : `<p class="muted">В этой категории пока нет позиций.</p>`
@@ -1908,7 +2017,7 @@
         <div class="toolbar">
           <h2>Меню</h2>
 
-          <div class="actions">
+          ${isCloudAdmin() ? `<div class="actions">
             <button class="primary" onclick="addCategory()">
               ＋ Категория
             </button>
@@ -1916,7 +2025,7 @@
             <button onclick="addMenuItem()">
               ＋ Позиция меню
             </button>
-          </div>
+          </div>` : `<span class="profile-note">Изменение меню доступно только администратору группы. <a href="#" onclick="setView('settings');return false">Открыть настройки</a></span>`}
         </div>
 
         ${categories ||
@@ -1925,6 +2034,288 @@
           </div>`
         }
       `;
+    }
+
+    function isCloudAdmin() {
+      return !!cloudUser && !!cloudGroup && cloudRole === "admin";
+    }
+
+    function cloudStatusText() {
+      if (!cloud) return "Не удалось загрузить библиотеку Supabase. Проверьте подключение к интернету.";
+      if (!cloudUser) return "Войдите в аккаунт, чтобы создать группу или присоединиться к ней.";
+      if (!cloudGroup) return "Аккаунт подключён. Создайте группу или вступите по коду.";
+      return `Группа: ${esc(cloudGroup.name)} · Роль: ${cloudRole === "admin" ? "администратор" : "официант"}`;
+    }
+
+    function renderSettings() {
+      const authBlock = cloudUser ? `
+        <div class="settings-card">
+          <h3>Аккаунт</h3>
+          <p class="profile-note">Вход выполнен: ${esc(cloudUser.email || "")}</p>
+          <button class="small danger" onclick="cloudSignOut()">Выйти из аккаунта</button>
+        </div>` : `
+        <div class="settings-card">
+          <h3>Вход и регистрация</h3>
+          <label for="cloud-email">Электронная почта</label>
+          <input id="cloud-email" type="email" autocomplete="email" placeholder="name@example.com">
+          <label for="cloud-password">Пароль</label>
+          <input id="cloud-password" type="password" autocomplete="current-password" placeholder="Не менее 6 символов">
+          <div class="actions" style="margin-top:12px">
+            <button class="primary" onclick="cloudSignIn()">Войти</button>
+            <button onclick="cloudSignUp()">Создать аккаунт</button>
+          </div>
+          <p class="profile-note">Для каждого официанта нужен отдельный аккаунт. Если включено подтверждение почты, сначала откройте письмо Supabase.</p>
+        </div>`;
+
+      const profileBlock = cloudUser ? `
+        <div class="settings-card">
+          <h3>Профиль официанта</h3>
+          <label for="waiter-full-name">Имя и фамилия</label>
+          <input id="waiter-full-name" value="${esc(cloudProfile?.full_name || "")}" placeholder="Например, Антон Иванов">
+          <label for="waiter-phone">Номер телефона</label>
+          <input id="waiter-phone" type="tel" value="${esc(cloudProfile?.phone || "")}" placeholder="+380...">
+          <button class="primary" style="margin-top:12px" onclick="saveCloudProfile()">Сохранить профиль</button>
+        </div>` : "";
+
+      let groupBlock = "";
+      if (cloudUser && !cloudGroup) groupBlock = `
+        <div class="settings-card">
+          <h3>Группа официантов</h3>
+          <label for="new-group-name">Создать новую группу</label>
+          <input id="new-group-name" placeholder="Например, Основная смена">
+          <button class="primary" style="margin-top:10px" onclick="createWaiterGroup()">Создать группу</button>
+          <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+          <label for="join-group-code">Вступить по коду приглашения</label>
+          <input id="join-group-code" placeholder="Например, A1B2C3D4">
+          <button style="margin-top:10px" onclick="joinWaiterGroup()">Вступить в группу</button>
+        </div>`;
+      else if (cloudUser && cloudGroup) groupBlock = `
+        <div class="settings-card">
+          <h3>Группа официантов</h3>
+          <p><strong>${esc(cloudGroup.name)}</strong></p>
+          ${cloudRole === "admin" ? `<p class="profile-note">Код приглашения: <strong>${esc(cloudGroup.join_code)}</strong></p>` : ""}
+          <button class="small" onclick="refreshCloudGroup()">Обновить данные группы</button>
+          ${cloudRole === "admin" ? `
+            <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+            <h4>Пригласить по номеру телефона</h4>
+            <label for="invite-phone">Номер телефона сотрудника</label>
+            <input id="invite-phone" type="tel" placeholder="+380...">
+            <button class="primary" style="margin-top:10px" onclick="inviteWaiterByPhone()">Создать приглашение</button>
+          ` : `<p class="profile-note">Попросите администратора пригласить вас по номеру телефона или передать код группы.</p>`}
+          <div id="cloud-members" class="profile-note" style="margin-top:12px">Список участников загружается по кнопке «Обновить данные группы».</div>
+          <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+          <button class="small" style="background:#fff0ed;color:#a33325;border:1px solid #efc4bd" onclick="leaveWaiterGroup()">Выйти из группы</button>
+          <p class="profile-note">При выходе доступ к общему меню и участникам группы будет прекращён. Личные заказы на этом устройстве останутся.</p>
+        </div>`;
+
+      const invitationsBlock = cloudUser ? `
+        <div class="settings-card">
+          <h3>Приглашения для меня</h3>
+          <button class="small" onclick="loadMyInvitations()">Проверить приглашения</button>
+          <div style="margin-top:10px">${pendingInvitations.length ? pendingInvitations.map(i => `
+            <div style="padding:10px 0;border-top:1px solid var(--line)">
+              <strong>${esc(i.group_name)}</strong><br>
+              <button class="small primary" style="margin-top:8px" onclick="acceptPhoneInvitation('${i.invitation_id}')">Принять приглашение</button>
+            </div>`).join("") : `<span class="profile-note">Новых приглашений пока нет.</span>`}</div>
+        </div>` : "";
+
+      const menuSyncBlock = cloudUser && cloudGroup ? `
+        <div class="settings-card">
+          <h3>Общее меню группы</h3>
+          <p class="profile-note">${cloudRole === "admin" ? "Администратор может отправить текущее меню всем участникам. Официанты могут загрузить общее меню на свой телефон." : "Загрузите актуальное меню, опубликованное администратором."}</p>
+          ${cloudRole === "admin" ? `<button class="primary" onclick="publishSharedMenu()">Опубликовать моё меню для группы</button>` : ""}
+          <button style="margin-top:8px" onclick="downloadSharedMenu()">Загрузить общее меню</button>
+        </div>` : "";
+
+      return `<div class="settings-wrap">
+        <div class="toolbar"><h2>Настройки и группа</h2></div>
+        <div class="settings-card"><strong>Состояние подключения</strong><p class="profile-note">${cloudStatusText()}</p>${cloudMessage ? `<p role="status">${esc(cloudMessage)}</p>` : ""}</div>
+        ${authBlock}${profileBlock}${groupBlock}${invitationsBlock}${menuSyncBlock}
+      </div>`;
+    }
+
+    async function cloudSignUp() {
+      if (!cloud) return alert("Supabase не загрузился. Проверьте интернет-соединение.");
+      const email = document.getElementById("cloud-email")?.value.trim();
+      const password = document.getElementById("cloud-password")?.value || "";
+      if (!email || password.length < 6) return alert("Введите email и пароль не короче 6 символов.");
+      cloudBusy = true;
+      const { data, error } = await cloud.auth.signUp({ email, password });
+      cloudBusy = false;
+      if (error) return alert("Не удалось создать аккаунт: " + error.message);
+      if (!data.session) alert("Аккаунт создан. Проверьте почту и подтвердите адрес, затем войдите в приложение.");
+      await refreshCloudSession();
+    }
+
+    async function cloudSignIn() {
+      if (!cloud) return alert("Supabase не загрузился. Проверьте интернет-соединение.");
+      const email = document.getElementById("cloud-email")?.value.trim();
+      const password = document.getElementById("cloud-password")?.value || "";
+      if (!email || !password) return alert("Введите email и пароль.");
+      const { error } = await cloud.auth.signInWithPassword({ email, password });
+      if (error) return alert("Не удалось войти: " + error.message);
+      await refreshCloudSession();
+    }
+
+    async function cloudSignOut() {
+      if (!cloud) return;
+      await cloud.auth.signOut();
+      cloudUser = cloudProfile = cloudGroup = cloudRole = null;
+      pendingInvitations = [];
+      cloudMessage = "Вы вышли из аккаунта.";
+      render();
+    }
+
+    async function refreshCloudSession() {
+      if (!cloud) return;
+      const { data } = await cloud.auth.getSession();
+      cloudUser = data.session?.user || null;
+      cloudProfile = null; cloudGroup = null; cloudRole = null;
+      if (cloudUser) {
+        const { data: profile } = await cloud.from("waiter_profiles").select("user_id,full_name,phone").eq("user_id", cloudUser.id).maybeSingle();
+        cloudProfile = profile || { user_id: cloudUser.id, full_name: "", phone: "" };
+        const { data: membership, error } = await cloud.from("waiter_group_members").select("group_id,role").eq("user_id", cloudUser.id).limit(1).maybeSingle();
+        if (membership && !error) {
+          cloudRole = membership.role;
+          const { data: group } = await cloud.from("waiter_groups").select("id,name,join_code").eq("id", membership.group_id).maybeSingle();
+          cloudGroup = group || null;
+        }
+      }
+      render();
+    }
+
+    async function saveCloudProfile() {
+      if (!cloudUser) return;
+      const full_name = document.getElementById("waiter-full-name")?.value.trim() || "";
+      const phone = document.getElementById("waiter-phone")?.value.trim() || "";
+      const { error } = await cloud.from("waiter_profiles").upsert({ user_id: cloudUser.id, full_name, phone, updated_at: new Date().toISOString() });
+      if (error) return alert("Не удалось сохранить профиль: " + error.message);
+      cloudProfile = { user_id: cloudUser.id, full_name, phone };
+      cloudMessage = "Профиль сохранён."; render();
+    }
+
+    async function createWaiterGroup() {
+      const name = document.getElementById("new-group-name")?.value.trim();
+      if (!name) return alert("Введите название группы.");
+      const { data, error } = await cloud.rpc("create_waiter_group", { p_name: name });
+      if (error) return alert("Не удалось создать группу: " + error.message);
+      cloudMessage = "Группа создана. Вы назначены администратором.";
+      await refreshCloudSession();
+    }
+
+    async function joinWaiterGroup() {
+      const code = document.getElementById("join-group-code")?.value.trim();
+      if (!code) return alert("Введите код приглашения.");
+      const { error } = await cloud.rpc("join_waiter_group_by_code", { p_code: code });
+      if (error) return alert("Не удалось вступить в группу: " + error.message);
+      cloudMessage = "Вы вступили в группу.";
+      await refreshCloudSession();
+    }
+
+    async function refreshCloudGroup() {
+      if (!cloudGroup) return;
+      const { data, error } = await cloud.from("waiter_group_members").select("user_id,role,joined_at").eq("group_id", cloudGroup.id);
+      if (error) return alert("Не удалось загрузить участников: " + error.message);
+      const ids = (data || []).map(m => m.user_id);
+      const { data: profiles } = ids.length ? await cloud.from("waiter_profiles").select("user_id,full_name,phone").in("user_id", ids) : { data: [] };
+      const byId = Object.fromEntries((profiles || []).map(p => [p.user_id, p]));
+      const box = document.getElementById("cloud-members");
+      if (box) box.innerHTML = (data || []).map(m => {
+        const isSelf = m.user_id === cloudUser.id;
+        const title = `${esc(byId[m.user_id]?.full_name || "Участник без имени")} — ${m.role === "admin" ? "администратор" : "официант"}${isSelf ? " (вы)" : ""}`;
+        const remove = cloudRole === "admin" && !isSelf && m.role !== "admin"
+          ? `<button class="small" style="margin:4px 0 8px;background:#fff0ed;color:#a33325;border:1px solid #efc4bd" onclick="removeWaiterFromGroup('${m.user_id}')">Удалить из группы</button>`
+          : "";
+        return `<div style="padding:9px 0;border-top:1px solid var(--line)"><strong>${title}</strong><br>${remove}</div>`;
+      }).join("") || "Участников пока нет.";
+    }
+
+    async function removeWaiterFromGroup(userId) {
+      if (!isCloudAdmin()) return alert("Удалять участников может только администратор.");
+      if (!userId || userId === cloudUser.id) return alert("Нельзя удалить самого себя этой кнопкой. Используйте «Выйти из группы».");
+      if (!confirm("Удалить этого официанта из группы? Он потеряет доступ к общему меню и участникам. Его личные заказы останутся.")) return;
+      const { error } = await cloud.rpc("admin_remove_waiter_from_group", { p_user_id: userId });
+      if (error) return alert("Не удалось удалить участника: " + error.message);
+      cloudMessage = "Официант удалён из группы.";
+      await refreshCloudSession();
+      if (cloudGroup) await refreshCloudGroup();
+    }
+
+    async function leaveWaiterGroup() {
+      if (!cloudUser || !cloudGroup) return;
+      const isAdmin = cloudRole === "admin";
+      const question = isAdmin
+        ? "Выйти из группы? Если в группе есть другие участники, права администратора автоматически перейдут самому давно вступившему официанту. Если вы последний участник, группа будет удалена вместе с общим меню."
+        : "Выйти из группы? Вы потеряете доступ к её участникам и общему меню. Личные заказы на устройстве останутся.";
+      if (!confirm(question)) return;
+      const { error } = await cloud.rpc("leave_waiter_group");
+      if (error) return alert("Не удалось выйти из группы: " + error.message);
+      cloudMessage = "Вы вышли из группы.";
+      await refreshCloudSession();
+    }
+
+    async function inviteWaiterByPhone() {
+      if (!isCloudAdmin()) return alert("Приглашать сотрудников может только администратор.");
+      const phone = document.getElementById("invite-phone")?.value.trim();
+      if (!phone) return alert("Введите номер телефона.");
+      const { error } = await cloud.from("waiter_group_invitations").insert({ group_id: cloudGroup.id, invited_phone: phone, invited_by: cloudUser.id });
+      if (error) return alert("Не удалось создать приглашение: " + error.message);
+      cloudMessage = "Приглашение создано. Сотрудник увидит его после входа и сохранения такого же номера в профиле.";
+      render();
+    }
+
+    async function loadMyInvitations() {
+      if (!cloudUser) return;
+      const { data, error } = await cloud.rpc("list_my_pending_waiter_invitations");
+      if (error) return alert("Не удалось проверить приглашения: " + error.message);
+      pendingInvitations = data || [];
+      render();
+    }
+
+    async function acceptPhoneInvitation(id) {
+      const { error } = await cloud.rpc("accept_waiter_phone_invitation", { p_invitation_id: id });
+      if (error) return alert("Не удалось принять приглашение: " + error.message);
+      pendingInvitations = [];
+      cloudMessage = "Приглашение принято. Вы добавлены в группу.";
+      await refreshCloudSession();
+    }
+
+    async function publishSharedMenu() {
+      if (!isCloudAdmin()) return alert("Публиковать меню может только администратор.");
+      if (!confirm("Опубликовать текущее меню для всех участников группы? Общее меню будет заменено содержимым этого устройства.")) return;
+      const { data: oldCats, error: readError } = await cloud.from("shared_menu_categories").select("id").eq("group_id", cloudGroup.id);
+      if (readError) return alert("Не удалось проверить общее меню: " + readError.message);
+      const { error: delError } = await cloud.from("shared_menu_categories").delete().eq("group_id", cloudGroup.id);
+      if (delError) return alert("Не удалось обновить категории: " + delError.message);
+      const idMap = {};
+      for (let i = 0; i < state.categories.length; i++) {
+        const c = state.categories[i];
+        const { data, error } = await cloud.from("shared_menu_categories").insert({ group_id: cloudGroup.id, name: c.name, sort_order: i }).select("id").single();
+        if (error) return alert("Ошибка публикации категории «" + c.name + "»: " + error.message);
+        idMap[c.id] = data.id;
+      }
+      const rows = state.menu.filter(m => idMap[m.categoryId]).map((m, i) => ({ group_id: cloudGroup.id, category_id: idMap[m.categoryId], name: m.name, sort_order: i, is_available: true }));
+      if (rows.length) {
+        const { error } = await cloud.from("shared_menu_items").insert(rows);
+        if (error) return alert("Ошибка публикации блюд: " + error.message);
+      }
+      cloudMessage = `Общее меню опубликовано: ${state.categories.length} категорий, ${rows.length} позиций.`;
+      render();
+    }
+
+    async function downloadSharedMenu() {
+      if (!cloudGroup) return;
+      const { data: cats, error: cErr } = await cloud.from("shared_menu_categories").select("id,name,sort_order").eq("group_id", cloudGroup.id).order("sort_order");
+      if (cErr) return alert("Не удалось загрузить категории: " + cErr.message);
+      const { data: items, error: iErr } = await cloud.from("shared_menu_items").select("id,category_id,name,sort_order,is_available").eq("group_id", cloudGroup.id).order("sort_order");
+      if (iErr) return alert("Не удалось загрузить блюда: " + iErr.message);
+      if (!cats?.length) return alert("Администратор ещё не опубликовал общее меню.");
+      if (!confirm("Загрузить общее меню? Текущие локальные категории и блюда будут заменены. Заказы и архив останутся без изменений.")) return;
+      const localId = {};
+      state.categories = cats.map(c => { const id = makeId(); localId[c.id] = id; return { id, name: c.name }; });
+      state.menu = (items || []).filter(i => i.is_available && localId[i.category_id]).map(i => ({ id: makeId(), categoryId: localId[i.category_id], name: i.name }));
+      expandedCategoryId = state.categories[0]?.id || null;
+      save(); cloudMessage = "Общее меню загружено на это устройство. Заказы не затронуты."; render();
     }
 
     function renderArchive() {
@@ -1995,6 +2386,8 @@
     function render() {
       document.documentElement.classList.toggle("menu-page", view === "menu");
       document.body.classList.toggle("menu-page", view === "menu");
+      document.documentElement.classList.toggle("settings-page", view === "settings");
+      document.body.classList.toggle("settings-page", view === "settings");
 
       document.querySelectorAll("nav button").forEach(button => {
         button.classList.remove("active");
@@ -2012,6 +2405,8 @@
         app.innerHTML = renderTables();
       } else if (view === "menu") {
         app.innerHTML = renderMenu();
+      } else if (view === "settings") {
+        app.innerHTML = renderSettings();
       } else {
         app.innerHTML = renderArchive();
       }
@@ -2111,8 +2506,14 @@
       welcomeOverlay.hidden = false;
     });
 
-    // Запуск приложения
+    // Запуск приложения и восстановление облачной сессии
     render();
+    if (cloud) {
+      refreshCloudSession().catch(err => console.error("Supabase session error", err));
+      cloud.auth.onAuthStateChange(() => {
+        refreshCloudSession().catch(err => console.error("Supabase auth refresh error", err));
+      });
+    }
   </script>
 </body>
 </html>
