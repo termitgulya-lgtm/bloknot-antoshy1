@@ -505,16 +505,28 @@
 
     body.order-fullscreen .layout {
       position: fixed;
-      inset: 0;
+      inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
       z-index: 9999;
       display: block;
-      width: 100vw;
-      height: 100dvh;
+      width: auto;
+      height: auto;
       min-height: 0;
       padding: 0;
       margin: 0;
       overflow: hidden;
       background: var(--bg);
+    }
+
+    /* В Android WebView safe-area иногда возвращает 0 даже при edge-to-edge.
+       Поэтому полноэкранный режим заказа получает резервные отступы под
+       статус-бар с часами и нижнюю системную панель. */
+    body.android-device.order-fullscreen .layout {
+      top: max(env(safe-area-inset-top, 0px), 32px);
+      right: max(env(safe-area-inset-right, 0px), 0px);
+      bottom: max(env(safe-area-inset-bottom, 0px), 28px);
+      left: max(env(safe-area-inset-left, 0px), 0px);
+      width: auto;
+      height: auto;
     }
 
     body.order-fullscreen .layout > section:first-child {
@@ -1973,6 +1985,9 @@
     }
 
     function toggleOrderFullscreen() {
+      // Помечаем Android отдельно: в некоторых версиях WebView env(safe-area-*)
+      // равен нулю, хотя контент рисуется под системными панелями.
+      document.body.classList.toggle("android-device", /Android/i.test(navigator.userAgent));
       document.body.classList.toggle("order-fullscreen");
       const button = document.getElementById("toggleOrderFullscreen");
       if (button) {
