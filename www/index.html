@@ -498,67 +498,6 @@
 
     .order-screen-header h3 { margin: 0; }
 
-    /* Полноэкранный просмотр текущего заказа */
-    body.order-fullscreen {
-      overflow: hidden !important;
-    }
-
-    body.order-fullscreen .layout {
-      position: fixed;
-      inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
-      z-index: 9999;
-      display: block;
-      width: auto;
-      height: auto;
-      min-height: 0;
-      padding: 0;
-      margin: 0;
-      overflow: hidden;
-      background: var(--bg);
-    }
-
-    /* В Android WebView safe-area иногда возвращает 0 даже при edge-to-edge.
-       Поэтому полноэкранный режим заказа получает резервные отступы под
-       статус-бар с часами и нижнюю системную панель. */
-    body.android-device.order-fullscreen .layout {
-      top: max(env(safe-area-inset-top, 0px), 32px);
-      right: max(env(safe-area-inset-right, 0px), 0px);
-      bottom: max(env(safe-area-inset-bottom, 0px), 28px);
-      left: max(env(safe-area-inset-left, 0px), 0px);
-      width: auto;
-      height: auto;
-    }
-
-    body.order-fullscreen .layout > section:first-child {
-      display: none !important;
-    }
-
-    body.order-fullscreen .layout > .order-screen {
-      display: block;
-      width: 100%;
-      height: 100%;
-      min-height: 0;
-      max-height: 100%;
-      margin: 0;
-      padding: 14px;
-      overflow-x: hidden;
-      overflow-y: auto;
-      border-radius: 0;
-      overscroll-behavior: contain;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    body.order-fullscreen .order-screen-header {
-      position: sticky;
-      top: -14px;
-      z-index: 2;
-      margin: -14px -14px 12px;
-      padding: 12px 14px;
-      background: var(--card);
-      border-bottom: 1px solid var(--line);
-    }
-
-
     /* Настройки: отдельная прокручиваемая страница с аккуратными карточками */
     html.settings-page,
     body.settings-page {
@@ -797,13 +736,6 @@
       .layout > .card h2 { font-size: 16px; }
       .order-screen-header { align-items: center; }
       .order-screen-header h3 { font-size: 15px; }
-      body.order-fullscreen .layout > .order-screen { padding: 10px; }
-      body.order-fullscreen .order-screen-header {
-        top: -10px;
-        margin: -10px -10px 10px;
-        padding: 10px;
-      }
-
       .layout > .card h3 { font-size: 14px; margin-bottom: 8px; }
 
       .table-selector {
@@ -1086,19 +1018,43 @@
     }
 
 
-    /* Отдельная область прокрутки внутри неподвижного окна заказа. */
-    body.order-fullscreen .layout > .order-screen {
-      display: flex;
-      flex-direction: column;
+    /* Независимое окно: не меняет размеры main, body или layout. */
+    #orderModal[hidden] { display: none !important; }
+    #orderModal {
+      position: fixed;
+      top: env(safe-area-inset-top, 0px);
+      bottom: env(safe-area-inset-bottom, 0px);
+      left: env(safe-area-inset-left, 0px);
+      right: env(safe-area-inset-right, 0px);
+      z-index: 9000;
+      background: #f4f8f8;
       overflow: hidden;
-      box-sizing: border-box;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      overscroll-behavior: contain;
     }
-    body.order-fullscreen .order-screen-header {
-      position: static;
-      flex: 0 0 auto;
+    #orderModal.android-insets {
+      top: max(env(safe-area-inset-top, 0px), 36px);
+      bottom: max(env(safe-area-inset-bottom, 0px), 32px);
     }
-    body.order-fullscreen .order-screen-scroll {
-      flex: 1 1 0;
+    #orderModal > .order-screen {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      min-height: 0;
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      border-radius: 0;
+      background: #f4f8f8;
+      overflow: hidden;
+    }
+    #orderModal .order-screen-header {
+      margin: 0;
+      padding: 12px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    #orderModal .order-screen-scroll {
       min-height: 0;
       min-width: 0;
       overflow-x: hidden;
@@ -1106,7 +1062,7 @@
       overscroll-behavior: contain;
       touch-action: pan-y;
       -webkit-overflow-scrolling: touch;
-      padding-bottom: 12px;
+      padding: 12px 12px 24px;
     }
   </style>
 </head>
@@ -1124,6 +1080,7 @@
   </header>
 
   <main id="app"></main>
+  <div id="orderModal" role="dialog" aria-modal="true" aria-label="Заказ" hidden></div>
 
   <!-- Кнопка закрытия мобильной клавиатуры -->
   <button type="button" class="keyboard-done" id="keyboardDone">
@@ -1740,11 +1697,12 @@
             addedRow.classList.remove("blink-yellow");
           }, { once: true });
 
-          addedRow.scrollIntoView({
-            behavior: "smooth",
-            block: "end",
-            inline: "nearest"
-          });
+          const scroller = orderModalOpen ? orderPanel.querySelector(".order-screen-scroll") : orderPanel;
+          const delta = addedRow.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom;
+          if (delta > 0) scroller.scrollBy({ top: delta + 8, behavior: "smooth" });
+          else if (addedRow.getBoundingClientRect().top < scroller.getBoundingClientRect().top) {
+            scroller.scrollBy({ top: addedRow.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 8, behavior: "smooth" });
+          }
         }
       });
     }
@@ -2007,17 +1965,56 @@
       render();
     }
 
-    function toggleOrderFullscreen() {
-      // Помечаем Android отдельно: в некоторых версиях WebView env(safe-area-*)
-      // равен нулю, хотя контент рисуется под системными панелями.
-      document.body.classList.toggle("android-device", /Android/i.test(navigator.userAgent));
-      document.body.classList.toggle("order-fullscreen");
-      const button = document.getElementById("toggleOrderFullscreen");
-      if (button) {
-        button.textContent = document.body.classList.contains("order-fullscreen")
-          ? "Скрыть"
-          : "Показать экран";
+    let orderModalOpen = false;
+    let orderPlaceholder = null;
+    let normalOrderScroll = 0;
+    let normalViewportScroll = null;
+
+    function mountOrderModal(scrollTop = 0) {
+      const panel = document.querySelector("#app .order-screen");
+      if (!panel) return false;
+      const modal = document.getElementById("orderModal");
+      orderPlaceholder = document.createElement("div");
+      orderPlaceholder.setAttribute("aria-hidden", "true");
+      panel.replaceWith(orderPlaceholder);
+      modal.append(panel);
+      modal.classList.toggle("android-insets", /Android/i.test(navigator.userAgent));
+      modal.hidden = false;
+      document.getElementById("app").inert = true;
+      document.querySelector("body > header").inert = true;
+      panel.querySelector("#toggleOrderFullscreen").textContent = "Скрыть";
+      panel.querySelector(".order-screen-scroll").scrollTop = scrollTop;
+      return true;
+    }
+
+    function closeOrderModal() {
+      const modal = document.getElementById("orderModal");
+      const panel = modal.querySelector(".order-screen");
+      if (panel && orderPlaceholder?.isConnected) {
+        orderPlaceholder.replaceWith(panel);
+        panel.querySelector("#toggleOrderFullscreen").textContent = "Показать экран";
+        panel.scrollTop = normalOrderScroll;
       }
+      modal.replaceChildren();
+      modal.hidden = true;
+      orderPlaceholder = null;
+      orderModalOpen = false;
+      document.getElementById("app").inert = false;
+      document.querySelector("body > header").inert = false;
+      if (normalViewportScroll) {
+        document.getElementById("app").scrollTop = normalViewportScroll.main;
+        window.scrollTo(normalViewportScroll.x, normalViewportScroll.y);
+      }
+      normalViewportScroll = null;
+    }
+
+    function toggleOrderFullscreen() {
+      if (orderModalOpen) { closeOrderModal(); return; }
+      const panel = document.querySelector("#app .order-screen");
+      if (!panel) return;
+      normalOrderScroll = panel.scrollTop;
+      normalViewportScroll = { x: window.scrollX, y: window.scrollY, main: document.getElementById("app").scrollTop };
+      orderModalOpen = mountOrderModal();
     }
 
     function renderTables() {
@@ -2168,7 +2165,7 @@
                   id="toggleOrderFullscreen"
                   class="small primary"
                   onclick="toggleOrderFullscreen()">
-                  ${document.body.classList.contains("order-fullscreen") ? "Скрыть" : "Показать экран"}
+                  ${orderModalOpen ? "Скрыть" : "Показать экран"}
                 </button>
               </div>
 
@@ -2780,13 +2777,14 @@
 
       const app = document.getElementById("app");
 
-      const previousScroll = app.querySelector(".order-screen-scroll");
-      const orderScrollTop = previousScroll ? previousScroll.scrollTop : 0;
+      const modal = document.getElementById("orderModal");
+      const orderScrollTop = modal.querySelector(".order-screen-scroll")?.scrollTop || 0;
+      if (orderModalOpen && view !== "tables") closeOrderModal();
       if (view === "tables") {
         app.innerHTML = renderTables();
-        const nextScroll = app.querySelector(".order-screen-scroll");
-        if (nextScroll && document.body.classList.contains("order-fullscreen")) {
-          nextScroll.scrollTop = orderScrollTop;
+        if (orderModalOpen) {
+          modal.replaceChildren();
+          if (!mountOrderModal(orderScrollTop)) closeOrderModal();
         }
       } else if (view === "menu") {
         app.innerHTML = renderMenu();
@@ -2860,6 +2858,7 @@
 
     window.addEventListener("popstate", function() {
       if (allowBrowserBack) return;
+      if (orderModalOpen) { armExitGuard(); closeOrderModal(); return; }
 
       // Возвращаем защитную запись до показа диалога.
       armExitGuard();
