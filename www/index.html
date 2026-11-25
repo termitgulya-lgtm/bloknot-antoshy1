@@ -985,6 +985,8 @@
       touch-action: manipulation;
     }
 
+    .welcome-button { min-width: 0 !important; padding: 0 !important; }
+
     .welcome-button:focus-visible {
       opacity: .35;
       outline: 3px solid #20d7d0;
@@ -1176,6 +1178,14 @@
       <button type="button" id="exitLeave">Пойду так и не заработав</button>
     </section>
   </div>
+  <script>
+    // Independent welcome handler: does not depend on cloud or native plugins.
+    (function () {
+      const overlay = document.getElementById("welcomeOverlay");
+      const button = document.getElementById("welcomeDone");
+      button.addEventListener("click", function () { overlay.hidden = true; });
+    })();
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const STORAGE_KEY = "waiter-notebook-v1";
@@ -1250,7 +1260,7 @@
 
     let view = "tables";
     let selectedTableId = null;
-    let expandedCategoryId = state.categories[0]?.id || null;
+    let expandedCategoryId = state.categories?.[0]?.id || null;
 
     function toggleCategory(id) {
       expandedCategoryId = expandedCategoryId === id ? null : id;
@@ -2991,10 +3001,10 @@
       }
     });
     if (nativeApp) {
-      nativeApp.addListener("backButton", handleExitBack).catch(err => console.error("Back listener failed", err));
+      try { Promise.resolve(nativeApp.addListener("backButton", handleExitBack)).catch(err => console.error("Back listener failed", err)); } catch (err) { console.error("Back listener failed", err); }
     } else {
       function armExitGuard() { history.pushState({appExitGuard:true}, "", location.href); }
-      if (!history.state?.appExitGuard) armExitGuard();
+      try { if (!history.state?.appExitGuard) armExitGuard(); } catch (err) { console.error("History guard failed", err); }
       window.addEventListener("popstate", () => {
         if (allowBrowserBack) return;
         armExitGuard();
@@ -3004,19 +3014,6 @@
         if (!allowBrowserBack) { event.preventDefault(); event.returnValue = ""; }
       });
     }
-
-    // Приветствие закрывается только после нажатия «Готово».
-    const welcomeOverlay = document.getElementById("welcomeOverlay");
-    const welcomeDone = document.getElementById("welcomeDone");
-
-    welcomeDone.addEventListener("click", function() {
-      welcomeOverlay.hidden = true;
-    });
-
-    // При возврате к странице из кеша браузера приветствие появляется снова.
-    window.addEventListener("pageshow", function() {
-      welcomeOverlay.hidden = false;
-    });
 
     // Запуск приложения и восстановление облачной сессии
     render();
