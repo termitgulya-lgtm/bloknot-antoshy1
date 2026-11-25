@@ -8,7 +8,9 @@ workflows:
       node: 20
     scripts:
       - name: Установка зависимостей
-        script: npm install
+        script: |
+          npm install
+          cp node_modules/xlsx/dist/xlsx.full.min.js www/xlsx.full.min.js
       - name: Создание Android-проекта
         script: npx cap add android
       - name: Синхронизация веб-приложения
