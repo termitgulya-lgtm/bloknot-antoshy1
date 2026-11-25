@@ -2628,28 +2628,41 @@
 
     async function cloudSignOut() {
       if (!cloud) return;
+      ++cloudRefreshVersion;
       await cloud.auth.signOut();
+      ++cloudRefreshVersion;
       cloudUser = cloudProfile = cloudGroup = cloudRole = null;
       pendingInvitations = [];
       cloudMessage = "Вы вышли из аккаунта.";
       render();
     }
 
+    let cloudRefreshVersion = 0;
     async function refreshCloudSession() {
       if (!cloud) return;
-      const { data } = await cloud.auth.getSession();
-      cloudUser = data.session?.user || null;
-      cloudProfile = null; cloudGroup = null; cloudRole = null;
-      if (cloudUser) {
-        const { data: profile } = await cloud.from("waiter_profiles").select("user_id,full_name,phone").eq("user_id", cloudUser.id).maybeSingle();
-        cloudProfile = profile || { user_id: cloudUser.id, full_name: "", phone: "" };
-        const { data: membership, error } = await cloud.from("waiter_group_members").select("group_id,role").eq("user_id", cloudUser.id).limit(1).maybeSingle();
-        if (membership && !error) {
-          cloudRole = membership.role;
-          const { data: group } = await cloud.from("waiter_groups").select("id,name,join_code").eq("id", membership.group_id).maybeSingle();
-          cloudGroup = group || null;
+      const version = ++cloudRefreshVersion;
+      const { data, error: sessionError } = await cloud.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (version !== cloudRefreshVersion) return;
+      const user = data.session?.user || null;
+      if (!user || cloudUser?.id !== user.id) {
+        cloudUser = user; cloudProfile = null; cloudGroup = null; cloudRole = null;
+        render();
+      }
+      let profile = null, group = null, role = null;
+      if (user) {
+        const { data: p } = await cloud.from("waiter_profiles").select("user_id,full_name,phone").eq("user_id", user.id).maybeSingle();
+        profile = p || { user_id: user.id, full_name: "", phone: "" };
+        const { data: membership, error } = await cloud.from("waiter_group_members").select("group_id,role").eq("user_id", user.id).limit(1).maybeSingle();
+        if (error) throw error;
+        if (membership) {
+          const { data: g, error: groupError } = await cloud.from("waiter_groups").select("id,name,join_code").eq("id", membership.group_id).maybeSingle();
+          if (groupError) throw groupError;
+          group = g || null; role = membership.role;
         }
       }
+      if (version !== cloudRefreshVersion) return;
+      cloudUser = user; cloudProfile = profile; cloudGroup = group; cloudRole = role;
       render();
       startOrderInbox();
     }
@@ -3129,7 +3142,7 @@
     if (cloud) {
       refreshCloudSession().catch(err => console.error("Supabase session error", err));
       cloud.auth.onAuthStateChange(() => {
-        refreshCloudSession().catch(err => console.error("Supabase auth refresh error", err));
+        setTimeout(() => refreshCloudSession().catch(err => console.error("Supabase auth refresh error", err)), 0);
       });
     }
   </script>
