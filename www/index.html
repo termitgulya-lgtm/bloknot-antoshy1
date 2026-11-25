@@ -1136,7 +1136,7 @@
     @keyframes exitCoin { 0% { transform:translateY(0) rotate(0); opacity:0; } 12% { opacity:1; } 85% { opacity:1; } 100% { transform:translateY(105vh) rotate(420deg); opacity:0; } }
     @media (prefers-reduced-motion:reduce) { #exitDialog .exit-card { animation:none; } #exitDialog .exit-coins { display:none; } }
 
-</style>
+#menuImportDialog[hidden]{display:none!important} #menuImportDialog{position:fixed;inset:0;z-index:30000;background:#0007;display:grid;place-items:center;padding: max(40px,env(safe-area-inset-top)) 12px max(40px,env(safe-area-inset-bottom));box-sizing:border-box} #menuImportDialog section{background:#e4f1ed;color:#235e5b;border-radius:20px;padding:20px;width:min(100%,480px);max-height:100%;overflow:auto;box-sizing:border-box;display:flex;flex-direction:column;gap:12px} #menuImportDialog label{display:flex;align-items:center;gap:8px} #menuImportDialog input[type=radio]{width:auto;flex:none;accent-color:#347f7c} #menuImportPreview{white-space:pre-wrap;overflow:auto;max-height:140px;font:inherit;font-size:13px} #menuImportStats{color:#347f7c} </style>
 </head>
 
 <body>
@@ -1186,6 +1186,9 @@
       button.addEventListener("click", function () { overlay.hidden = true; });
     })();
   </script>
+  <input type="file" id="menuImportFile" accept=".xlsx,.csv,.json" hidden onchange="readMenuImport(this)">
+  <div id="menuImportDialog" hidden role="dialog" aria-modal="true" aria-labelledby="menuImportTitle"><section><h2 id="menuImportTitle">Меню готово к загрузке</h2><strong id="menuImportStats"></strong><p id="menuImportNote"></p><pre id="menuImportPreview"></pre><label><input type="radio" name="menuImportMode" value="add" checked> Добавить к существующему меню</label><label><input type="radio" name="menuImportMode" value="update"> Добавить новые блюда и обновить цены существующих</label><label><input type="radio" name="menuImportMode" value="replace"> Полностью заменить меню</label><button class="primary" onclick="applyMenuImport()">Загрузить меню</button><button onclick="closeMenuImport()">Отмена</button></section></div>
+  <script src="xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
     const STORAGE_KEY = "waiter-notebook-v1";
@@ -2186,7 +2189,7 @@
         const orderItems = order.items.map((item, index) => `
           <div class="order-row" data-order-item-id="${esc(item.menuItemId)}">
             <div>
-              <div class="item-title">${esc(item.name)}</div>
+              <div class="item-title">${esc(item.name)}</div>${item.price != null ? `<small>${esc(item.price)} грн</small>` : ""}
               <input
                 type="text"
                 value="${esc(item.comment || "")}"
@@ -2227,7 +2230,7 @@
             ${isCollapsed ? "" : items.map(item => `
               <div class="menu-row">
                 <div>
-                  <div class="item-title">${esc(item.name)}</div>
+                  <div class="item-title">${esc(item.name)}</div>${item.price != null ? `<small>${esc(item.price)} грн</small>` : ""}
                 </div>
 
                 <button class="primary small"
@@ -2302,6 +2305,78 @@
       `;
     }
 
+    let importRows = [];
+    const menuNorm = s => String(s ?? '').trim().normalize('NFC').toLocaleLowerCase();
+    const menuKey = (c,n) => JSON.stringify([menuNorm(c),menuNorm(n)]);
+    function menuExportRows() {
+      return state.menu.map(m => ({'Категория':state.categories.find(c=>c.id===m.categoryId)?.name || '', 'Название блюда':m.name, 'Цена':m.price ?? ''}));
+    }
+    function menuDownload(template) {
+      if (!window.XLSX) return alert('Модуль Excel не загружен.');
+      const rows = template ? [{'Категория':'Кава','Название блюда':'Еспресо','Цена':55}] : menuExportRows();
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows,{header:['Категория','Название блюда','Цена']}),'Меню');
+      XLSX.writeFile(wb,template?'menu-template.xlsx':'menu.xlsx');
+    }
+    function closeMenuImport() { document.getElementById('menuImportDialog').hidden=true; importRows=[]; }
+    async function readMenuImport(input) {
+      const file=input.files[0]; input.value=''; if(!file || !isCloudAdmin()) return;
+      try {
+        if(file.size>10*1024*1024) throw Error('Файл больше 10 МБ');
+        let raw;
+        if(/\.json$/i.test(file.name)) raw=JSON.parse(await file.text());
+        else {
+          if(!window.XLSX) throw Error('Модуль Excel не загружен');
+          const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+          raw=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:''});
+        }
+        if(!Array.isArray(raw)||!raw.length||raw.length>10000) throw Error('Ожидается от 1 до 10000 строк меню');
+        const unique=new Map(); let duplicates=0;
+        raw.forEach((r,i)=>{
+          const fields=Object.fromEntries(Object.entries(r).map(([k,v])=>[menuNorm(k),v]));
+          const c=String(fields['категория']??fields['category']??fields['категорія']??'').trim();
+          const n=String(fields['название блюда']??fields['название']??fields['назва страви']??fields['назва']??fields['name']??'').trim();
+          const p=fields['цена']??fields['ціна']??fields['price']??'';
+          const price=String(p).trim()===''?null:Number(String(p).trim().replace(',','.'));
+          if(!c||!n||c.length>200||n.length>300||(price!==null&&(!Number.isFinite(price)||price<0))) throw Error('Некорректная строка '+(i+2));
+          const key=menuKey(c,n); if(unique.has(key)){duplicates++;return;} unique.set(key,{c,n,price});
+        });
+        importRows=[...unique.values()];
+        const existing=new Set(menuExportRows().map(r=>menuKey(r['Категория'],r['Название блюда'])));
+        document.getElementById('menuImportStats').textContent=`${importRows.length} блюд · ${new Set(importRows.map(r=>menuNorm(r.c))).size} категорий · ${importRows.filter(r=>existing.has(menuKey(r.c,r.n))).length} совпадений`;
+        document.getElementById('menuImportNote').textContent=`${duplicates} повторов в файле пропущено. Изменения только на этом устройстве; цены не участвуют в расчёте заказов.`;
+        document.getElementById('menuImportPreview').textContent=importRows.slice(0,12).map(r=>`${r.c} — ${r.n}${r.price===null?'':' · '+r.price+' грн'}`).join('\n');
+        document.querySelector('input[name="menuImportMode"][value="add"]').checked=true;
+        document.getElementById('menuImportDialog').hidden=false;
+      } catch(e){alert('Не удалось прочитать меню: '+e.message);}
+    }
+    function applyMenuImport(){
+      if(!isCloudAdmin()||!importRows.length)return;
+      const mode=document.querySelector('input[name="menuImportMode"]:checked').value;
+      if(mode==='replace'&&!confirm('Заменить всё локальное меню? Заказы и архив сохранятся.'))return;
+      const oldCats=state.categories, oldMenu=state.menu;
+      try {
+        localStorage.setItem(STORAGE_KEY+'_menu_backup',JSON.stringify({categories:oldCats,menu:oldMenu}));
+        const cats=mode==='replace'?[]:oldCats.map(c=>({...c}));
+        const items=mode==='replace'?[]:oldMenu.map(m=>({...m}));
+        const oldByKey=new Map(oldMenu.map(m=>[menuKey(oldCats.find(c=>c.id===m.categoryId)?.name,m.name),m]));
+        for(const r of importRows){
+          let cat=cats.find(c=>menuNorm(c.name)===menuNorm(r.c));
+          if(!cat){cat={id:oldCats.find(c=>menuNorm(c.name)===menuNorm(r.c))?.id||makeId(),name:r.c};cats.push(cat);}
+          const item=items.find(m=>m.categoryId===cat.id&&menuNorm(m.name)===menuNorm(r.n));
+          if(item){if(mode==='update'&&r.price!==null)item.price=r.price;continue;}
+          const old=oldByKey.get(menuKey(r.c,r.n));
+          items.push({id:old?.id||makeId(),name:r.n,categoryId:cat.id,...(r.price===null?{}:{price:r.price})});
+        }
+        state.categories=cats;state.menu=items;save();
+      }catch(e){state.categories=oldCats;state.menu=oldMenu;return alert('Импорт отменён: '+e.message);}
+      expandedCategoryId=state.categories[0]?.id||null;closeMenuImport();render();alert('Меню загружено.');
+    }
+    function restoreMenuBackup(){
+      if(!isCloudAdmin())return;
+      try{const b=JSON.parse(localStorage.getItem(STORAGE_KEY+'_menu_backup'));if(!b)return alert('Резервной копии пока нет.');if(!confirm('Восстановить меню до последнего импорта?'))return;const old=[state.categories,state.menu];state.categories=b.categories;state.menu=b.menu;try{save();}catch(e){[state.categories,state.menu]=old;throw e;}expandedCategoryId=state.categories[0]?.id||null;render();}catch(e){alert(e.message);}
+    }
+
     function renderMenu() {
       const categories = state.categories
         .slice()
@@ -2352,7 +2427,7 @@
                 ? items.map(item => `
                     <div class="menu-row">
                       <div>
-                        <div class="item-title">${esc(item.name)}</div>
+                        <div class="item-title">${esc(item.name)}</div>${item.price != null ? `<small>${esc(item.price)} грн</small>` : ""}
                             </div>
 
                       ${isCloudAdmin() ? `<div class="actions">
@@ -2389,6 +2464,7 @@
           </div>` : `<span class="profile-note">Изменение меню доступно только администратору группы. <a href="#" onclick="setView('settings');return false">Открыть настройки</a></span>`}
         </div>
 
+        ${isCloudAdmin() ? `<section class="card" style="margin-bottom:14px"><h3>Импорт меню</h3><div class="actions" style="flex-wrap:wrap"><button class="primary" onclick="document.getElementById('menuImportFile').click()">Загрузить файл меню</button><button onclick="menuDownload(true)">Скачать шаблон Excel</button><button onclick="menuDownload(false)">Выгрузить меню</button><button onclick="restoreMenuBackup()">Восстановить копию</button></div></section>` : ''}
         ${categories ||
           `<div class="empty">
             Категорий пока нет. Создайте категорию, затем добавьте блюда и напитки.
@@ -2973,6 +3049,7 @@
       exitFocus = null;
     }
     function handleExitBack() {
+      if (!document.getElementById("menuImportDialog").hidden) { closeMenuImport(); return; }
       if (!exitDialog.hidden) { hideExitDialog(); return; }
       if (orderModalOpen) { closeOrderModal(); return; }
       exitFocus = document.activeElement;
