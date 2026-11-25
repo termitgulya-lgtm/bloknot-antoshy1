@@ -1141,6 +1141,14 @@ html.android-safe { --safe-top: max(32px, env(safe-area-inset-top, 0px)); --safe
 body:has(.incoming-order-backdrop) { overflow: hidden; }
 .order-share-backdrop,.incoming-order-backdrop { inset: var(--safe-top) 0 var(--safe-bottom); overscroll-behavior: contain; }
 #menuNotice { padding-top: max(40px,var(--safe-top)) !important; padding-bottom: max(40px,var(--safe-bottom)) !important; }
+
+#menuNotice{position:fixed;inset:0;z-index:30001;display:grid;place-items:center;background:#102d32a8;backdrop-filter:blur(5px);padding:40px 16px;box-sizing:border-box;overscroll-behavior:contain}
+#menuNotice[hidden],#noticeCopy[hidden],#menuNoticeNo[hidden]{display:none!important}
+#menuNotice .notice-card{width:min(100%,440px);max-height:100%;overflow:auto;box-sizing:border-box;background:#eaf5f1;color:#235e5b;border:1px solid #b4d7d0;border-radius:24px;padding:22px;box-shadow:0 18px 55px #102d3255;animation:exitAppear .22s ease-out both;overscroll-behavior:contain}
+#noticeSymbol{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:#d1e9e2;color:#176b58;font-size:26px;font-weight:800;margin-bottom:12px}
+#noticeHeading{margin:0 0 12px;font-size:21px}#menuNoticeText{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5;color:#203d40}#noticeCopy{width:100%;min-height:120px;margin-top:12px;box-sizing:border-box;resize:vertical}
+.notice-actions{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap}.notice-actions button{flex:1;min-height:44px;white-space:normal}.notice-actions #menuNoticeNo{background:#fff;color:#235e5b}.notice-actions #menuNoticeYes{background:#176b58;color:white}#menuNotice[data-kind=danger] #noticeSymbol{background:#fbe2dc;color:#a7352c}#menuNotice[data-kind=danger] #menuNoticeYes{background:#a7352c}
+@media(prefers-reduced-motion:reduce){#menuNotice .notice-card{animation:none}}
 </style>
 </head>
 
@@ -1192,7 +1200,7 @@ body:has(.incoming-order-backdrop) { overflow: hidden; }
     })();
   </script>
   <input type="file" id="menuImportFile" accept=".xlsx,.csv,.json" hidden onchange="readMenuImport(this)">
-  <div id="menuNotice" hidden role="dialog" aria-modal="true" style="position:fixed;inset:0;z-index:30001;background:#0008;place-items:center;padding:40px 16px;box-sizing:border-box"><section style="background:#e4f1ed;color:#235e5b;border-radius:20px;padding:20px;width:min(100%,440px);box-sizing:border-box"><h3 id="menuNoticeText" style="white-space:pre-wrap"></h3><div class="actions"><button id="menuNoticeYes" class="primary">Готово</button><button id="menuNoticeNo">Отмена</button></div></section></div>
+  <div id="menuNotice" hidden role="dialog" aria-modal="true" aria-labelledby="noticeHeading"><section class="notice-card"><div id="noticeSymbol" aria-hidden="true">i</div><h3 id="noticeHeading"></h3><div id="menuNoticeText"></div><textarea id="noticeCopy" readonly hidden aria-label="Скопируйте текст заказа:"></textarea><div class="notice-actions"><button id="menuNoticeNo" hidden>Отмена</button><button id="menuNoticeYes" class="primary">Готово</button></div></section></div>
   <div id="menuImportDialog" hidden role="dialog" aria-modal="true" aria-labelledby="menuImportTitle"><section><h2 id="menuImportTitle">Меню готово к загрузке</h2><strong id="menuImportStats"></strong><p id="menuImportNote"></p><pre id="menuImportPreview"></pre><label><input type="radio" name="menuImportMode" value="add" checked> Добавить к существующему меню</label><label><input type="radio" name="menuImportMode" value="update"> Добавить новые блюда и обновить цены существующих</label><label><input type="radio" name="menuImportMode" value="replace"> Полностью заменить меню</label><button class="primary" onclick="applyMenuImport()">Загрузить меню</button><button onclick="closeMenuImport()">Отмена</button></section></div>
 <script>
 const uiDict = {"Стол №": ["Стіл №", "Table #"], "Заказ — стол №": ["Замовлення — стіл №", "Order — table #"], "Блокнот официанта": ["Блокнот офіціанта", "Waiter notebook"], "Столы и заказы": ["Столи та замовлення", "Tables & orders"], "Меню": ["Меню", "Menu"], "Архив": ["Архів", "Archive"], "Отправленные заказы": ["Надіслані замовлення", "Sent orders"], "⚙ Настройки": ["⚙ Налаштування", "⚙ Settings"], "Готово": ["Готово", "Done"], "✓ Готово": ["✓ Готово", "✓ Done"], "Останусь зарабатывать": ["Залишуся заробляти", "I'll stay and earn"], "Пойду так и не заработав": ["Піду так і не заробивши", "I'll leave without earning"], "Есть заказ": ["Є замовлення", "Has order"], "Свободен": ["Вільний", "Available"], "Выберите стол, чтобы открыть заказ.": ["Оберіть стіл, щоб відкрити замовлення.", "Select a table to open an order."], "＋ Новый счёт": ["＋ Новий рахунок", "＋ New bill"], "Комментарий к блюду...": ["Коментар до страви...", "Dish comment..."], "Добавить": ["Додати", "Add"], "Скрыть": ["Приховати", "Hide"], "Показать экран": ["Показати екран", "Show screen"], "Поделиться заказом": ["Поділитися замовленням", "Share order"], "Завершить": ["Завершити", "Complete"], "＋ Добавить стол": ["＋ Додати стіл", "＋ Add table"], "В этом счёте пока нет позиций.": ["У цьому рахунку ще немає позицій.", "This bill is empty."], "＋ Позиция": ["＋ Позиція", "＋ Item"], "Изменить": ["Змінити", "Change"], "Удалить": ["Видалити", "Delete"], "Только просмотр": ["Лише перегляд", "View only"], "Редактировать": ["Редагувати", "Edit"], "＋ Категория": ["＋ Категорія", "＋ Category"], "＋ Позиция меню": ["＋ Позиція меню", "＋ Menu item"], "Импорт меню": ["Імпорт меню", "Import menu"], "Загрузить файл меню": ["Завантажити файл меню", "Import menu file"], "Скачать шаблон Excel": ["Завантажити шаблон Excel", "Download Excel template"], "Выгрузить меню": ["Експортувати меню", "Export menu"], "Восстановить копию": ["Відновити копію", "Restore backup"], "Меню готово к загрузке": ["Меню готове до завантаження", "Menu ready to import"], "Добавить к существующему меню": ["Додати до наявного меню", "Add to existing menu"], "Добавить новые блюда и обновить цены существующих": ["Додати нові страви та оновити ціни наявних", "Add new dishes and update existing prices"], "Полностью заменить меню": ["Повністю замінити меню", "Replace entire menu"], "Загрузить меню": ["Завантажити меню", "Import menu"], "Отмена": ["Скасувати", "Cancel"], "Подтвердить": ["Підтвердити", "Confirm"], "Настройки и группа": ["Налаштування та група", "Settings & group"], "Состояние подключения": ["Стан підключення", "Connection status"], "Аккаунт": ["Обліковий запис", "Account"], "Выйти из аккаунта": ["Вийти з облікового запису", "Sign out"], "Вход и регистрация": ["Вхід і реєстрація", "Sign in & register"], "Электронная почта": ["Електронна пошта", "Email"], "Пароль": ["Пароль", "Password"], "Не менее 6 символов": ["Не менше 6 символів", "At least 6 characters"], "Войти": ["Увійти", "Sign in"], "Создать аккаунт": ["Створити обліковий запис", "Create account"], "Профиль официанта": ["Профіль офіціанта", "Waiter profile"], "Имя и фамилия": ["Ім’я та прізвище", "Full name"], "Номер телефона": ["Номер телефону", "Phone number"], "Сохранить профиль": ["Зберегти профіль", "Save profile"], "Группа официантов": ["Група офіціантів", "Waiter group"], "Создать новую группу": ["Створити нову групу", "Create new group"], "Создать группу": ["Створити групу", "Create group"], "Вступить по коду приглашения": ["Приєднатися за кодом запрошення", "Join by invitation code"], "Вступить в группу": ["Приєднатися до групи", "Join group"], "Обновить данные группы": ["Оновити дані групи", "Refresh group"], "Пригласить по номеру телефона": ["Запросити за номером телефону", "Invite by phone"], "Номер телефона сотрудника": ["Номер телефону працівника", "Employee phone number"], "Создать приглашение": ["Створити запрошення", "Create invitation"], "Выйти из группы": ["Вийти з групи", "Leave group"], "Приглашения для меня": ["Запрошення для мене", "My invitations"], "Проверить приглашения": ["Перевірити запрошення", "Check invitations"], "Принять приглашение": ["Прийняти запрошення", "Accept invitation"], "Новых приглашений пока нет.": ["Нових запрошень поки немає.", "No new invitations."], "Общее меню группы": ["Спільне меню групи", "Shared group menu"], "Опубликовать моё меню для группы": ["Опублікувати моє меню для групи", "Publish my menu to group"], "Загрузить / обновить общее меню": ["Завантажити / оновити спільне меню", "Download / update shared menu"], "Обновить": ["Оновити", "Refresh"], "Принят": ["Прийнято", "Accepted"], "Ожидает принятия": ["Очікує прийняття", "Pending acceptance"], "Архив заказов": ["Архів замовлень", "Order archive"], "Завершённых заказов пока нет.": ["Завершених замовлень поки немає.", "No completed orders yet."], "Удалить из архива": ["Видалити з архіву", "Delete from archive"], "А как же Мальдивы?": ["А як же Мальдіви?", "What about the Maldives?"], "С такими темпами максимум — маршрутка домой.": ["Такими темпами максимум — маршрутка додому.", "At this rate, you'll only afford the bus home."], "А чаевые?!": ["А чайові?!", "What about tips?!"], "Работа не волк, но чаевые сами себя не принесут.": ["Робота не вовк, але чайові самі себе не принесуть.", "Work can wait, but tips won't earn themselves."], "Не бросай меня!": ["Не кидай мене!", "Don't leave me!"], "Твой кошелёк только начал верить в светлое будущее.": ["Твій гаманець тільки почав вірити у світле майбутнє.", "Your wallet just started believing in a bright future."], "А как же Porsche?": ["А як же Porsche?", "What about the Porsche?"], "Твой будущий Porsche неодобрительно сигналит.": ["Твій майбутній Porsche несхвально сигналить.", "Your future Porsche is honking in disapproval."], "Ещё по кофейку?": ["Ще по каві?", "Another coffee?"], "Кофе выпит, а состояние ещё не заработано.": ["Каву випито, а статки ще не зароблено.", "Coffee is finished, fortune is not."], "Домой уже?": ["Вже додому?", "Going home already?"], "Дома тебя ждёт диван, а здесь — деньги.": ["Вдома чекає диван, а тут — гроші.", "Your sofa awaits at home; money awaits here."], "Официант, держись!": ["Офіціанте, тримайся!", "Hang in there, waiter!"], "Осталось всего пару столиков… Так говорили ещё три часа назад.": ["Залишилося лише кілька столиків… Так казали ще три години тому.", "Just a couple of tables left… That's what they said three hours ago."], "А яхта?": ["А яхта?", "What about the yacht?"], "Ну всё, сегодня опять без яхты.": ["Ну все, сьогодні знову без яхти.", "Well, no yacht again today."], "Ошибка 402": ["Помилка 402", "Error 402"], "Недостаточно чаевых для завершения рабочего дня.": ["Недостатньо чайових для завершення робочого дня.", "Insufficient tips to end the shift."], "Попытка побега!": ["Спроба втечі!", "Escape attempt!"], "Внимание! Обнаружена попытка побега официанта.": ["Увага! Виявлено спробу втечі офіціанта.", "Warning! Waiter escape attempt detected."], "Импорт доступен администратору.": ["Імпорт доступний адміністратору.", "Import is available to administrators."], "Меню загружено.": ["Меню завантажено.", "Menu imported."], "Резервной копии пока нет.": ["Резервної копії поки немає.", "No backup yet."], "Удалить стол": ["Видалити стіл", "Delete table"], "Изменить номер": ["Змінити номер", "Change number"], "Открыть настройки": ["Відкрити налаштування", "Open settings"], "Столов пока нет. Нажмите «Добавить стол», чтобы начать.": ["Столів поки немає. Натисніть «Додати стіл», щоб почати.", "No tables yet. Tap Add table to begin."], "Добавьте категории и позиции в разделе «Меню».": ["Додайте категорії та позиції в розділі «Меню».", "Add categories and items in Menu."], "В этой категории пока нет позиций.": ["У цій категорії ще немає позицій.", "No items in this category yet."], "Категорий пока нет. Создайте категорию, затем добавьте блюда и напитки.": ["Категорій поки немає. Створіть категорію, потім додайте страви та напої.", "No categories yet. Create a category, then add dishes and drinks."], "Войдите в группу официантов, чтобы видеть отправленные заказы.": ["Увійдіть до групи офіціантів, щоб бачити надіслані замовлення.", "Join a waiter group to view sent orders."], "Войдите в аккаунт, чтобы создать группу или присоединиться к ней.": ["Увійдіть до облікового запису, щоб створити групу або приєднатися до неї.", "Sign in to create or join a group."], "Для каждого официанта нужен отдельный аккаунт. Если включено подтверждение почты, сначала откройте письмо Supabase.": ["Для кожного офіціанта потрібен окремий обліковий запис. Якщо ввімкнено підтвердження пошти, спочатку відкрийте лист Supabase.", "Each waiter needs a separate account. If email confirmation is enabled, open the Supabase email first."], "Не удалось загрузить библиотеку Supabase. Проверьте подключение к интернету.": ["Не вдалося завантажити бібліотеку Supabase. Перевірте підключення до інтернету.", "Could not load Supabase. Check your internet connection."], "Аккаунт подключён. Создайте группу или вступите по коду.": ["Обліковий запис підключено. Створіть групу або вступіть за кодом.", "Account connected. Create a group or join using a code."], "Попросите администратора пригласить вас по номеру телефона или передать код группы.": ["Попросіть адміністратора запросити вас за номером телефону або надати код групи.", "Ask the administrator to invite you by phone or share the group code."], "Список участников загружается по кнопке «Обновить данные группы».": ["Список учасників завантажується кнопкою «Оновити дані групи».", "Select Refresh group data to load the member list."], "При выходе доступ к общему меню и участникам группы будет прекращён. Личные заказы на этом устройстве останутся.": ["Після виходу доступ до спільного меню та учасників групи буде припинено. Особисті замовлення на цьому пристрої залишаться.", "Leaving removes access to the shared menu and group members. Personal orders on this device will remain."], "Администратор может отправить текущее меню всем участникам. Официанты смогут загрузить общее меню на свой телефон.": ["Адміністратор може надіслати поточне меню всім учасникам. Офіціанти зможуть завантажити спільне меню на свій телефон.", "The administrator can publish the current menu to all members. Waiters can download it to their phones."], "Эту кнопку можно использовать повторно, когда администратор обновит меню.": ["Цю кнопку можна використовувати повторно, коли адміністратор оновить меню.", "Use this button again whenever the administrator updates the menu."], "Вы ещё не отправляли заказы коллегам.": ["Ви ще не надсилали замовлення колегам.", "You have not sent any orders to colleagues yet."], "Например, Антон Иванов": ["Наприклад, Антон Іванов", "For example, Anton Ivanov"], "Например, Основная смена": ["Наприклад, Основна зміна", "For example, Main shift"], "Например, A1B2C3D4": ["Наприклад, A1B2C3D4", "For example, A1B2C3D4"], "Код приглашения:": ["Код запрошення:", "Invitation code:"], "администратор": ["адміністратор", "administrator"], "официант": ["офіціант", "waiter"], "Группа:": ["Група:", "Group:"], "Роль:": ["Роль:", "Role:"], "Вход выполнен:": ["Вхід виконано:", "Signed in:"], "Получатель:": ["Отримувач:", "Recipient:"], "Кому отправлен:": ["Кому надіслано:", "Sent to:"], "Отправлен": ["Надіслано", "Sent"], "Комментарий:": ["Коментар:", "Comment:"], "Официант": ["Офіціант", "Waiter"], "Введите email и пароль.": ["Введіть електронну пошту та пароль.", "Enter your email and password."], "Введите email и пароль не короче 6 символов.": ["Введіть електронну пошту та пароль не коротший за 6 символів.", "Enter your email and a password of at least 6 characters."], "Supabase не загрузился. Проверьте интернет-соединение.": ["Supabase не завантажився. Перевірте підключення до інтернету.", "Supabase failed to load. Check your internet connection."], "Аккаунт создан. Проверьте почту и подтвердите адрес, затем войдите в приложение.": ["Обліковий запис створено. Перевірте пошту та підтвердьте адресу, потім увійдіть у застосунок.", "Account created. Check your email and confirm your address, then sign in."], "Не удалось создать аккаунт:": ["Не вдалося створити обліковий запис:", "Could not create account:"], "Не удалось войти:": ["Не вдалося увійти:", "Could not sign in:"], "Вход выполнен": ["Вхід виконано", "Signed in"], "Кому отправить заказ?": ["Кому надіслати замовлення?", "Who should receive the order?"], "Выберите официанта. Заказ поступит прямо в его приложение.": ["Оберіть офіціанта. Замовлення надійде безпосередньо в його застосунок.", "Select a waiter. The order will be sent directly to their app."], "Отправить →": ["Надіслати →", "Send →"], "Администратор": ["Адміністратор", "Administrator"], "Официант без имени": ["Офіціант без імені", "Unnamed waiter"], "В группе пока нет других официантов.": ["У групі поки немає інших офіціантів.", "There are no other waiters in the group yet."], "Общее меню загружено/обновлено на этом устройстве. Кнопка загрузки останется доступной; заказы не затронуты.": ["Спільне меню завантажено/оновлено на цьому пристрої. Кнопка завантаження залишиться доступною; замовлення не змінено.", "The shared menu has been downloaded/updated on this device. The download button remains available; orders are unaffected."]};
@@ -1202,6 +1210,7 @@ Object.assign(uiDict,{"Отправлен:": ["Надіслано:", "Sent:"], "
 let uiLanguage = localStorage.getItem('waiter-ui-language') || 'uk';
 if (!['uk','ru','en'].includes(uiLanguage)) uiLanguage='uk';
 const uiOriginal = new WeakMap();
+Object.assign(uiDict,{"Скопируйте текст заказа:":["Скопіюйте текст замовлення:","Copy the order text:"],"Подтвердить":["Підтвердити","Confirm"],"Отмена":["Скасувати","Cancel"],"Готово":["Готово","Done"]});
 function uiT(s){return uiLanguage==='ru'?s:(uiDict[s]?.[uiLanguage==='uk'?0:1]||s);}
 function uiMessage(s){
  if(typeof s!=="string" || uiLanguage==='ru') return s;
@@ -1219,8 +1228,6 @@ function uiMessage(s){
  const prefix=prefixes.find(x=>k.startsWith(x)&&(x.endsWith('№')||x.endsWith('«')||x.endsWith(':')||k[x.length]===' '));
  return prefix?s.replace(k,uiT(prefix)+k.slice(prefix.length)):s;
 }
-const nativeAlert=window.alert.bind(window), nativeConfirm=window.confirm.bind(window), nativePrompt=window.prompt.bind(window);
-window.alert=(s)=>nativeAlert(uiMessage(s)); window.confirm=(s)=>nativeConfirm(uiMessage(s)); window.prompt=(s,v)=>nativePrompt(uiMessage(s),v);
 function uiTranslate(root=document.body){
  document.documentElement.lang=uiLanguage;
  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
@@ -1470,11 +1477,11 @@ uiTranslate();
         document.body.classList.remove("keyboard-open");
       }
 
-      function saveTableNumber() {
+      async function saveTableNumber() {
         const number = input.value.trim();
 
         if (!number) {
-          alert("Введите номер стола.");
+          await menuNotice("Введите номер стола.");
           input.focus();
           return;
         }
@@ -1485,7 +1492,7 @@ uiTranslate();
         );
 
         if (duplicate) {
-          alert("Стол с таким номером уже существует.");
+          await menuNotice("Стол с таким номером уже существует.");
           input.focus();
           input.select();
           return;
@@ -1523,17 +1530,18 @@ uiTranslate();
       });
     }
 
-    function deleteTable(id) {
+    async function deleteTable(id) {
       const table = state.tables.find(t => t.id === id);
       if (!table) return;
 
       if (state.orders[id]?.bills?.some(b => b.items?.length)) {
-        alert("Нельзя удалить стол, пока для него есть незавершённые счета.");
+        await menuNotice("Нельзя удалить стол, пока для него есть незавершённые счета.");
         return;
       }
 
-      if (!confirm(`Удалить стол №${table.number}?`)) return;
+      if (!await menuNoticeConfirm(`Удалить стол №${table.number}?`)) return;
 
+      if (state.orders[id]?.bills?.some(b => b.items?.length)) return menuNotice("Нельзя удалить стол, пока для него есть незавершённые счета.");
       state.tables = state.tables.filter(t => t.id !== id);
       delete state.orders[id];
 
@@ -1591,7 +1599,7 @@ uiTranslate();
       overlay.innerHTML = `
         <div class="rename-dialog" role="dialog" aria-modal="true">
           <h3>${esc(title)}</h3>
-          <form id="formDialogForm">
+          <form id="formDialogForm" novalidate>
             <div class="form-dialog-fields">${fieldMarkup}</div>
             <div class="rename-actions">
               <button type="button" id="formDialogCancel">Отмена</button>
@@ -1614,14 +1622,14 @@ uiTranslate();
         document.body.classList.remove("keyboard-open");
       }
 
-      function submitDialog(event) {
+      async function submitDialog(event) {
         event.preventDefault();
 
         const values = controls.map(control => control.value.trim());
 
         for (let i = 0; i < fields.length; i++) {
           if (fields[i].required !== false && !values[i]) {
-            alert(`Заполните поле «${fields[i].label}».`);
+            await menuNotice(`Заполните поле «${fields[i].label}».`);
             controls[i].focus();
             return;
           }
@@ -1697,16 +1705,17 @@ uiTranslate();
       });
     }
 
-    function deleteCategory(id) {
+    async function deleteCategory(id) {
       const used = state.menu.some(item => item.categoryId === id);
 
       if (used) {
-        alert("Сначала переместите или удалите блюда из этой категории.");
+        await menuNotice("Сначала переместите или удалите блюда из этой категории.");
         return;
       }
 
-      if (!confirm("Удалить категорию?")) return;
+      if (!await menuNoticeConfirm("Удалить категорию?")) return;
 
+      if (state.menu.some(item => item.categoryId === id)) return menuNotice("Сначала переместите или удалите блюда из этой категории.");
       state.categories = state.categories.filter(c => c.id !== id);
       if (expandedCategoryId === id) {
         expandedCategoryId = state.categories[0]?.id || null;
@@ -1715,9 +1724,9 @@ uiTranslate();
       render();
     }
 
-    function addMenuItem(categoryId) {
+    async function addMenuItem(categoryId) {
       if (!state.categories.length) {
-        alert("Сначала создайте категорию.");
+        await menuNotice("Сначала создайте категорию.");
         return;
       }
 
@@ -1788,8 +1797,8 @@ uiTranslate();
       });
     }
 
-    function deleteMenuItem(id) {
-      if (!confirm("Удалить позицию из меню?")) return;
+    async function deleteMenuItem(id) {
+      if (!await menuNoticeConfirm("Удалить позицию из меню?")) return;
 
       state.menu = state.menu.filter(i => i.id !== id);
       save();
@@ -1883,7 +1892,7 @@ uiTranslate();
       const table = state.tables.find(t => t.id === tableId);
       const order = getActiveBill(tableId);
       if (!table || !order || !order.items?.length) {
-        alert("В этом счёте пока нет позиций для отправки.");
+        await menuNotice("В этом счёте пока нет позиций для отправки.");
         return;
       }
 
@@ -1908,8 +1917,8 @@ uiTranslate();
           const copied = document.execCommand("copy"); textarea.remove();
           if (!copied) throw new Error("Не удалось скопировать текст");
         }
-        alert("Текст заказа скопирован. Можно отправить его через мессенджер.");
-      } catch { prompt("Скопируйте текст заказа:", message); }
+        await menuNotice("Текст заказа скопирован. Можно отправить его через мессенджер.");
+      } catch { await menuNotice("Скопируйте текст заказа:", false, message); }
     }
 
     function buildOrderText(table, order) {
@@ -1923,15 +1932,15 @@ uiTranslate();
     }
 
     async function openOrderRecipientPicker(tableId) {
-      if (!cloudUser || !cloudGroup) return alert("Для отправки заказа напрямую нужно войти в группу официантов.");
+      if (!cloudUser || !cloudGroup) return await menuNotice("Для отправки заказа напрямую нужно войти в группу официантов.");
       const { data: members, error } = await cloud.from("waiter_group_members")
         .select("user_id,role").eq("group_id", cloudGroup.id);
-      if (error) return alert("Не удалось загрузить список официантов: " + error.message);
+      if (error) return await menuNotice("Не удалось загрузить список официантов: " + error.message);
       const ids = (members || []).filter(m => m.user_id !== cloudUser.id).map(m => m.user_id);
       const { data: profiles, error: profileError } = ids.length
         ? await cloud.from("waiter_profiles").select("user_id,full_name,phone").in("user_id", ids)
         : { data: [], error: null };
-      if (profileError) return alert("Не удалось загрузить анкеты официантов: " + profileError.message);
+      if (profileError) return await menuNotice("Не удалось загрузить анкеты официантов: " + profileError.message);
       const byId = Object.fromEntries((profiles || []).map(p => [p.user_id, p]));
       const backdrop = document.createElement("div");
       backdrop.className = "order-share-backdrop";
@@ -2076,16 +2085,17 @@ uiTranslate();
       sentOrdersPoll = setInterval(loadSentOrders, 15000);
     }
 
-    function finishOrder(tableId) {
+    async function finishOrder(tableId) {
       const order = getActiveBill(tableId);
       const table = state.tables.find(t => t.id === tableId);
 
       if (!order?.items?.length || !table) return;
 
-      if (!confirm(
+      if (!await menuNoticeConfirm(
         `Завершить ${order.name.toLowerCase()} для стола №${table.number}?`
       )) return;
 
+      if (!state.orders[tableId]?.bills?.includes(order) || !order.items?.length) return;
       state.archive.unshift({
         id: makeId(),
         tableNumber: table.number,
@@ -2368,20 +2378,45 @@ uiTranslate();
       return state.menu.map(m => ({'Категория':state.categories.find(c=>c.id===m.categoryId)?.name || '', 'Название блюда':m.name, 'Цена':m.price ?? ''}));
     }
     let menuNoticeResolve = null;
+    const noticeQueue = [];
+    let noticeFocus = null;
     function finishMenuNotice(value) {
-      const dialog=document.getElementById('menuNotice'); dialog.hidden=true; dialog.style.display='none';
-      const resolve=menuNoticeResolve; menuNoticeResolve=null; if(resolve) resolve(value);
-    }
-    function menuNotice(message, ask=false) {
-      if(menuNoticeResolve) finishMenuNotice(false);
+      if (!menuNoticeResolve) return;
       const dialog=document.getElementById('menuNotice');
-      document.getElementById('menuNoticeText').textContent=message;
-      const yes=document.getElementById('menuNoticeYes'), no=document.getElementById('menuNoticeNo');
-      yes.textContent=ask?'Подтвердить':'Готово'; no.hidden=!ask; no.style.display=ask?'':'none';
-      yes.onclick=()=>finishMenuNotice(true); no.onclick=()=>finishMenuNotice(false);
-      dialog.hidden=false; dialog.style.display='grid';
-      return new Promise(resolve=>{menuNoticeResolve=resolve;});
+      dialog.hidden=true; dialog.style.display='none';
+      const resolve=menuNoticeResolve; menuNoticeResolve=null;
+      noticeFocus?.focus?.({preventScroll:true}); noticeFocus=null;
+      resolve(value); queueMicrotask(showNextNotice);
     }
+    function menuNoticeConfirm(message) { return menuNotice(message,true); }
+    function menuNotice(message, ask=false, copyText=null) {
+      return new Promise(resolve=>{noticeQueue.push({message,ask,copyText,resolve});showNextNotice();});
+    }
+    function showNextNotice() {
+      if(menuNoticeResolve || !noticeQueue.length) return;
+      const {message,ask,copyText,resolve}=noticeQueue.shift();
+      const dialog=document.getElementById('menuNotice');
+      const danger=ask && /^(Удалить|Заменить|Выйти)/i.test(message);
+      dialog.dataset.kind=danger?'danger':ask?'ask':'info';
+      const labels={ru:['Уведомление','Подтверждение','Внимание'],uk:['Сповіщення','Підтвердження','Увага'],en:['Notice','Confirmation','Attention']}[uiLanguage];
+      document.getElementById('noticeHeading').textContent=labels[danger?2:ask?1:0];
+      document.getElementById('noticeSymbol').textContent=ask?'?':'i';
+      document.getElementById('menuNoticeText').textContent=message;
+      const field=document.getElementById('noticeCopy'); field.hidden=copyText===null; field.value=copyText??'';
+      const yes=document.getElementById('menuNoticeYes'), no=document.getElementById('menuNoticeNo');
+      yes.textContent=ask?'Подтвердить':'Готово'; no.textContent='Отмена'; no.hidden=!ask; no.style.display=ask?'':'none';
+      yes.onclick=()=>finishMenuNotice(true); no.onclick=()=>finishMenuNotice(false);
+      noticeFocus=document.activeElement; noticeFocus?.blur?.();
+      menuNoticeResolve=resolve; dialog.hidden=false; dialog.style.display='grid';
+      uiTranslate(dialog); (ask?no:yes).focus({preventScroll:true});
+    }
+    document.getElementById('menuNotice').addEventListener('keydown',event=>{
+      if(event.key==='Escape'){event.preventDefault();event.stopPropagation();finishMenuNotice(false);}
+      if(event.key==='Tab'){
+        const controls=[...event.currentTarget.querySelectorAll('button,textarea')].filter(e=>!e.hidden&&e.style.display!=='none');
+        const i=controls.indexOf(document.activeElement);event.preventDefault();controls[(i+(event.shiftKey?-1:1)+controls.length)%controls.length]?.focus({preventScroll:true});
+      }
+    });
     function openMenuPicker(){
       if(!isCloudAdmin()) return menuNotice('Импорт доступен администратору.');
       const old=document.getElementById('menuImportFile');
@@ -2660,25 +2695,25 @@ uiTranslate();
     }
 
     async function cloudSignUp() {
-      if (!cloud) return alert(uiT("Supabase не загрузился. Проверьте интернет-соединение."));
+      if (!cloud) return await menuNotice(uiT("Supabase не загрузился. Проверьте интернет-соединение."));
       const email = document.getElementById("cloud-email")?.value.trim();
       const password = document.getElementById("cloud-password")?.value || "";
-      if (!email || password.length < 6) return alert(uiT("Введите email и пароль не короче 6 символов."));
+      if (!email || password.length < 6) return await menuNotice(uiT("Введите email и пароль не короче 6 символов."));
       cloudBusy = true;
       const { data, error } = await cloud.auth.signUp({ email, password });
       cloudBusy = false;
-      if (error) return alert(uiT("Не удалось создать аккаунт:") + " " + error.message);
-      if (!data.session) alert(uiT("Аккаунт создан. Проверьте почту и подтвердите адрес, затем войдите в приложение."));
+      if (error) return await menuNotice(uiT("Не удалось создать аккаунт:") + " " + error.message);
+      if (!data.session) await menuNotice(uiT("Аккаунт создан. Проверьте почту и подтвердите адрес, затем войдите в приложение."));
       await refreshCloudSession();
     }
 
     async function cloudSignIn() {
-      if (!cloud) return alert(uiT("Supabase не загрузился. Проверьте интернет-соединение."));
+      if (!cloud) return await menuNotice(uiT("Supabase не загрузился. Проверьте интернет-соединение."));
       const email = document.getElementById("cloud-email")?.value.trim();
       const password = document.getElementById("cloud-password")?.value || "";
-      if (!email || !password) return alert(uiT("Введите email и пароль."));
+      if (!email || !password) return await menuNotice(uiT("Введите email и пароль."));
       const { error } = await cloud.auth.signInWithPassword({ email, password });
-      if (error) return alert(uiT("Не удалось войти:") + " " + error.message);
+      if (error) return await menuNotice(uiT("Не удалось войти:") + " " + error.message);
       await refreshCloudSession();
     }
 
@@ -2728,25 +2763,25 @@ uiTranslate();
       const full_name = document.getElementById("waiter-full-name")?.value.trim() || "";
       const phone = document.getElementById("waiter-phone")?.value.trim() || "";
       const { error } = await cloud.from("waiter_profiles").upsert({ user_id: cloudUser.id, full_name, phone, updated_at: new Date().toISOString() });
-      if (error) return alert("Не удалось сохранить профиль: " + error.message);
+      if (error) return await menuNotice("Не удалось сохранить профиль: " + error.message);
       cloudProfile = { user_id: cloudUser.id, full_name, phone };
       cloudMessage = "Профиль сохранён."; render();
     }
 
     async function createWaiterGroup() {
       const name = document.getElementById("new-group-name")?.value.trim();
-      if (!name) return alert("Введите название группы.");
+      if (!name) return await menuNotice("Введите название группы.");
       const { data, error } = await cloud.rpc("create_waiter_group", { p_name: name });
-      if (error) return alert("Не удалось создать группу: " + error.message);
+      if (error) return await menuNotice("Не удалось создать группу: " + error.message);
       cloudMessage = "Группа создана. Вы назначены администратором.";
       await refreshCloudSession();
     }
 
     async function joinWaiterGroup() {
       const code = document.getElementById("join-group-code")?.value.trim();
-      if (!code) return alert("Введите код приглашения.");
+      if (!code) return await menuNotice("Введите код приглашения.");
       const { error } = await cloud.rpc("join_waiter_group_by_code", { p_code: code });
-      if (error) return alert("Не удалось вступить в группу: " + error.message);
+      if (error) return await menuNotice("Не удалось вступить в группу: " + error.message);
       cloudMessage = "Вы вступили в группу.";
       await refreshCloudSession();
     }
@@ -2754,7 +2789,7 @@ uiTranslate();
     async function refreshCloudGroup() {
       if (!cloudGroup) return;
       const { data, error } = await cloud.from("waiter_group_members").select("user_id,role,joined_at").eq("group_id", cloudGroup.id);
-      if (error) return alert("Не удалось загрузить участников: " + error.message);
+      if (error) return await menuNotice("Не удалось загрузить участников: " + error.message);
       const ids = (data || []).map(m => m.user_id);
       const { data: profiles } = ids.length ? await cloud.from("waiter_profiles").select("user_id,full_name,phone").in("user_id", ids) : { data: [] };
       const byId = Object.fromEntries((profiles || []).map(p => [p.user_id, p]));
@@ -2803,11 +2838,11 @@ uiTranslate();
     }
 
     async function removeWaiterFromGroup(userId, fromProfile = false) {
-      if (!isCloudAdmin()) return alert("Удалять участников может только администратор.");
-      if (!userId || userId === cloudUser.id) return alert("Нельзя удалить самого себя этой кнопкой. Используйте «Выйти из группы».");
-      if (!confirm("Удалить этого официанта из группы? Он потеряет доступ к общему меню и участникам. Его личные заказы останутся.")) return;
+      if (!isCloudAdmin()) return await menuNotice("Удалять участников может только администратор.");
+      if (!userId || userId === cloudUser.id) return await menuNotice("Нельзя удалить самого себя этой кнопкой. Используйте «Выйти из группы».");
+      if (!await menuNoticeConfirm("Удалить этого официанта из группы? Он потеряет доступ к общему меню и участникам. Его личные заказы останутся.")) return;
       const { error } = await cloud.rpc("admin_remove_waiter_from_group", { p_user_id: userId });
-      if (error) return alert("Не удалось удалить участника: " + error.message);
+      if (error) return await menuNotice("Не удалось удалить участника: " + error.message);
       closeWaiterProfile();
       cloudMessage = "Официант удалён из группы.";
       await refreshCloudSession();
@@ -2820,19 +2855,19 @@ uiTranslate();
       const question = isAdmin
         ? "Выйти из группы? Если в группе есть другие участники, права администратора автоматически перейдут самому давно вступившему официанту. Если вы последний участник, группа будет удалена вместе с общим меню."
         : "Выйти из группы? Вы потеряете доступ к её участникам и общему меню. Личные заказы на устройстве останутся.";
-      if (!confirm(question)) return;
+      if (!await menuNoticeConfirm(question)) return;
       const { error } = await cloud.rpc("leave_waiter_group");
-      if (error) return alert("Не удалось выйти из группы: " + error.message);
+      if (error) return await menuNotice("Не удалось выйти из группы: " + error.message);
       cloudMessage = "Вы вышли из группы.";
       await refreshCloudSession();
     }
 
     async function inviteWaiterByPhone() {
-      if (!isCloudAdmin()) return alert("Приглашать сотрудников может только администратор.");
+      if (!isCloudAdmin()) return await menuNotice("Приглашать сотрудников может только администратор.");
       const phone = document.getElementById("invite-phone")?.value.trim();
-      if (!phone) return alert("Введите номер телефона.");
+      if (!phone) return await menuNotice("Введите номер телефона.");
       const { error } = await cloud.from("waiter_group_invitations").insert({ group_id: cloudGroup.id, invited_phone: phone, invited_by: cloudUser.id });
-      if (error) return alert("Не удалось создать приглашение: " + error.message);
+      if (error) return await menuNotice("Не удалось создать приглашение: " + error.message);
       cloudMessage = "Приглашение создано. Сотрудник увидит его после входа и сохранения такого же номера в профиле.";
       render();
     }
@@ -2840,37 +2875,37 @@ uiTranslate();
     async function loadMyInvitations() {
       if (!cloudUser) return;
       const { data, error } = await cloud.rpc("list_my_pending_waiter_invitations");
-      if (error) return alert("Не удалось проверить приглашения: " + error.message);
+      if (error) return await menuNotice("Не удалось проверить приглашения: " + error.message);
       pendingInvitations = data || [];
       render();
     }
 
     async function acceptPhoneInvitation(id) {
       const { error } = await cloud.rpc("accept_waiter_phone_invitation", { p_invitation_id: id });
-      if (error) return alert("Не удалось принять приглашение: " + error.message);
+      if (error) return await menuNotice("Не удалось принять приглашение: " + error.message);
       pendingInvitations = [];
       cloudMessage = "Приглашение принято. Вы добавлены в группу.";
       await refreshCloudSession();
     }
 
     async function publishSharedMenu() {
-      if (!isCloudAdmin()) return alert("Публиковать меню может только администратор.");
-      if (!confirm("Опубликовать текущее меню для всех участников группы? Общее меню будет заменено содержимым этого устройства.")) return;
+      if (!isCloudAdmin()) return await menuNotice("Публиковать меню может только администратор.");
+      if (!await menuNoticeConfirm("Опубликовать текущее меню для всех участников группы? Общее меню будет заменено содержимым этого устройства.")) return;
       const { data: oldCats, error: readError } = await cloud.from("shared_menu_categories").select("id").eq("group_id", cloudGroup.id);
-      if (readError) return alert("Не удалось проверить общее меню: " + readError.message);
+      if (readError) return await menuNotice("Не удалось проверить общее меню: " + readError.message);
       const { error: delError } = await cloud.from("shared_menu_categories").delete().eq("group_id", cloudGroup.id);
-      if (delError) return alert("Не удалось обновить категории: " + delError.message);
+      if (delError) return await menuNotice("Не удалось обновить категории: " + delError.message);
       const idMap = {};
       for (let i = 0; i < state.categories.length; i++) {
         const c = state.categories[i];
         const { data, error } = await cloud.from("shared_menu_categories").insert({ group_id: cloudGroup.id, name: c.name, sort_order: i }).select("id").single();
-        if (error) return alert("Ошибка публикации категории «" + c.name + "»: " + error.message);
+        if (error) return await menuNotice("Ошибка публикации категории «" + c.name + "»: " + error.message);
         idMap[c.id] = data.id;
       }
       const rows = state.menu.filter(m => idMap[m.categoryId]).map((m, i) => ({ group_id: cloudGroup.id, category_id: idMap[m.categoryId], name: m.name, sort_order: i, is_available: true }));
       if (rows.length) {
         const { error } = await cloud.from("shared_menu_items").insert(rows);
-        if (error) return alert("Ошибка публикации блюд: " + error.message);
+        if (error) return await menuNotice("Ошибка публикации блюд: " + error.message);
       }
       cloudMessage = `Общее меню опубликовано: ${state.categories.length} категорий, ${rows.length} позиций.`;
       render();
@@ -2879,11 +2914,11 @@ uiTranslate();
     async function downloadSharedMenu() {
       if (!cloudGroup) return;
       const { data: cats, error: cErr } = await cloud.from("shared_menu_categories").select("id,name,sort_order").eq("group_id", cloudGroup.id).order("sort_order");
-      if (cErr) return alert("Не удалось загрузить категории: " + cErr.message);
+      if (cErr) return await menuNotice("Не удалось загрузить категории: " + cErr.message);
       const { data: items, error: iErr } = await cloud.from("shared_menu_items").select("id,category_id,name,sort_order,is_available").eq("group_id", cloudGroup.id).order("sort_order");
-      if (iErr) return alert("Не удалось загрузить блюда: " + iErr.message);
-      if (!cats?.length) return alert("Администратор ещё не опубликовал общее меню.");
-      if (!confirm("Загрузить общее меню? Текущие локальные категории и блюда будут заменены. Заказы и архив останутся без изменений.")) return;
+      if (iErr) return await menuNotice("Не удалось загрузить блюда: " + iErr.message);
+      if (!cats?.length) return await menuNotice("Администратор ещё не опубликовал общее меню.");
+      if (!await menuNoticeConfirm("Загрузить общее меню? Текущие локальные категории и блюда будут заменены. Заказы и архив останутся без изменений.")) return;
       const localId = {};
       state.categories = cats.map(c => { const id = makeId(); localId[c.id] = id; return { id, name: c.name }; });
       state.menu = (items || []).filter(i => i.is_available && localId[i.category_id]).map(i => ({ id: makeId(), categoryId: localId[i.category_id], name: i.name }));
@@ -3033,10 +3068,12 @@ uiTranslate();
       `;
     }
 
-    function deleteArchiveOrder(index) {
-      if (!confirm("Удалить заказ из архива?")) return;
-
-      state.archive.splice(index, 1);
+    async function deleteArchiveOrder(index) {
+      const entry = state.archive[index];
+      if (!entry || !await menuNoticeConfirm("Удалить заказ из архива?")) return;
+      const currentIndex = state.archive.indexOf(entry);
+      if (currentIndex < 0) return;
+      state.archive.splice(currentIndex, 1);
       save();
       render();
     }
