@@ -1187,6 +1187,7 @@
     })();
   </script>
   <input type="file" id="menuImportFile" accept=".xlsx,.csv,.json" hidden onchange="readMenuImport(this)">
+  <div id="menuNotice" hidden role="dialog" aria-modal="true" style="position:fixed;inset:0;z-index:30001;background:#0008;place-items:center;padding:40px 16px;box-sizing:border-box"><section style="background:#e4f1ed;color:#235e5b;border-radius:20px;padding:20px;width:min(100%,440px);box-sizing:border-box"><h3 id="menuNoticeText" style="white-space:pre-wrap"></h3><div class="actions"><button id="menuNoticeYes" class="primary">Готово</button><button id="menuNoticeNo">Отмена</button></div></section></div>
   <div id="menuImportDialog" hidden role="dialog" aria-modal="true" aria-labelledby="menuImportTitle"><section><h2 id="menuImportTitle">Меню готово к загрузке</h2><strong id="menuImportStats"></strong><p id="menuImportNote"></p><pre id="menuImportPreview"></pre><label><input type="radio" name="menuImportMode" value="add" checked> Добавить к существующему меню</label><label><input type="radio" name="menuImportMode" value="update"> Добавить новые блюда и обновить цены существующих</label><label><input type="radio" name="menuImportMode" value="replace"> Полностью заменить меню</label><button class="primary" onclick="applyMenuImport()">Загрузить меню</button><button onclick="closeMenuImport()">Отмена</button></section></div>
   <script src="xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -2311,16 +2312,46 @@
     function menuExportRows() {
       return state.menu.map(m => ({'Категория':state.categories.find(c=>c.id===m.categoryId)?.name || '', 'Название блюда':m.name, 'Цена':m.price ?? ''}));
     }
-    function menuDownload(template) {
-      if (!window.XLSX) return alert('Модуль Excel не загружен.');
-      const rows = template ? [{'Категория':'Кава','Название блюда':'Еспресо','Цена':55}] : menuExportRows();
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows,{header:['Категория','Название блюда','Цена']}),'Меню');
-      XLSX.writeFile(wb,template?'menu-template.xlsx':'menu.xlsx');
+    let menuNoticeResolve = null;
+    function finishMenuNotice(value) {
+      const dialog=document.getElementById('menuNotice'); dialog.hidden=true; dialog.style.display='none';
+      const resolve=menuNoticeResolve; menuNoticeResolve=null; if(resolve) resolve(value);
+    }
+    function menuNotice(message, ask=false) {
+      if(menuNoticeResolve) finishMenuNotice(false);
+      const dialog=document.getElementById('menuNotice');
+      document.getElementById('menuNoticeText').textContent=message;
+      const yes=document.getElementById('menuNoticeYes'), no=document.getElementById('menuNoticeNo');
+      yes.textContent=ask?'Подтвердить':'Готово'; no.hidden=!ask; no.style.display=ask?'':'none';
+      yes.onclick=()=>finishMenuNotice(true); no.onclick=()=>finishMenuNotice(false);
+      dialog.hidden=false; dialog.style.display='grid';
+      return new Promise(resolve=>{menuNoticeResolve=resolve;});
+    }
+    function openMenuPicker(){
+      if(!isCloudAdmin()) return menuNotice('Импорт доступен администратору.');
+      const old=document.getElementById('menuImportFile');
+      const input=old.cloneNode(false); input.value=''; old.replaceWith(input);
+      input.click();
+    }
+    async function menuDownload(template) {
+      try {
+        if (!window.XLSX) throw Error('Модуль Excel не загружен.');
+        const rows = template ? [{'Категория':'Кава','Название блюда':'Еспресо','Цена':55}] : menuExportRows();
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows,{header:['Категория','Название блюда','Цена']}),'Меню');
+        const name=template?'menu-template.xlsx':'menu.xlsx';
+        if(window.Capacitor?.isNativePlatform?.()) {
+          const {Filesystem,Share}=window.Capacitor.Plugins;
+          if(!Filesystem||!Share) throw Error('Обновите APK с новыми компонентами сохранения файлов.');
+          const data=XLSX.write(wb,{bookType:'xlsx',type:'base64'});
+          const result=await Filesystem.writeFile({path:name,data,directory:'CACHE'});
+          await Share.share({title:template?'Шаблон меню':'Выгрузка меню',files:[result.uri],dialogTitle:'Сохранить или отправить Excel'});
+        } else XLSX.writeFile(wb,name);
+      } catch(e){ if(!/cancel/i.test(String(e.message))) await menuNotice('Не удалось выгрузить файл: '+e.message); }
     }
     function closeMenuImport() { document.getElementById('menuImportDialog').hidden=true; importRows=[]; }
     async function readMenuImport(input) {
-      const file=input.files[0]; input.value=''; if(!file || !isCloudAdmin()) return;
+      const file=input.files[0]; if(!file) return; if(!isCloudAdmin()) return menuNotice('Импорт доступен администратору.');
       try {
         if(file.size>10*1024*1024) throw Error('Файл больше 10 МБ');
         let raw;
@@ -2348,12 +2379,12 @@
         document.getElementById('menuImportPreview').textContent=importRows.slice(0,12).map(r=>`${r.c} — ${r.n}${r.price===null?'':' · '+r.price+' грн'}`).join('\n');
         document.querySelector('input[name="menuImportMode"][value="add"]').checked=true;
         document.getElementById('menuImportDialog').hidden=false;
-      } catch(e){alert('Не удалось прочитать меню: '+e.message);}
+      } catch(e){await menuNotice('Не удалось прочитать меню: '+e.message);} finally {input.value='';}
     }
-    function applyMenuImport(){
+    async function applyMenuImport(){
       if(!isCloudAdmin()||!importRows.length)return;
       const mode=document.querySelector('input[name="menuImportMode"]:checked').value;
-      if(mode==='replace'&&!confirm('Заменить всё локальное меню? Заказы и архив сохранятся.'))return;
+      if(mode==='replace'&&!(await menuNotice('Заменить всё локальное меню? Заказы и архив сохранятся.',true)))return;
       const oldCats=state.categories, oldMenu=state.menu;
       try {
         localStorage.setItem(STORAGE_KEY+'_menu_backup',JSON.stringify({categories:oldCats,menu:oldMenu}));
@@ -2369,12 +2400,12 @@
           items.push({id:old?.id||makeId(),name:r.n,categoryId:cat.id,...(r.price===null?{}:{price:r.price})});
         }
         state.categories=cats;state.menu=items;save();
-      }catch(e){state.categories=oldCats;state.menu=oldMenu;return alert('Импорт отменён: '+e.message);}
-      expandedCategoryId=state.categories[0]?.id||null;closeMenuImport();render();alert('Меню загружено.');
+      }catch(e){state.categories=oldCats;state.menu=oldMenu;return menuNotice('Импорт отменён: '+e.message);}
+      expandedCategoryId=state.categories[0]?.id||null;closeMenuImport();render();await menuNotice('Меню загружено.');
     }
-    function restoreMenuBackup(){
+    async function restoreMenuBackup(){
       if(!isCloudAdmin())return;
-      try{const b=JSON.parse(localStorage.getItem(STORAGE_KEY+'_menu_backup'));if(!b)return alert('Резервной копии пока нет.');if(!confirm('Восстановить меню до последнего импорта?'))return;const old=[state.categories,state.menu];state.categories=b.categories;state.menu=b.menu;try{save();}catch(e){[state.categories,state.menu]=old;throw e;}expandedCategoryId=state.categories[0]?.id||null;render();}catch(e){alert(e.message);}
+      try{const b=JSON.parse(localStorage.getItem(STORAGE_KEY+'_menu_backup'));if(!b)return menuNotice('Резервной копии пока нет.');if(!(await menuNotice('Восстановить меню до последнего импорта?',true)))return;const old=[state.categories,state.menu];state.categories=b.categories;state.menu=b.menu;try{save();}catch(e){[state.categories,state.menu]=old;throw e;}expandedCategoryId=state.categories[0]?.id||null;render();await menuNotice('Меню восстановлено.');}catch(e){await menuNotice('Не удалось восстановить меню: '+e.message);}
     }
 
     function renderMenu() {
@@ -2464,7 +2495,7 @@
           </div>` : `<span class="profile-note">Изменение меню доступно только администратору группы. <a href="#" onclick="setView('settings');return false">Открыть настройки</a></span>`}
         </div>
 
-        ${isCloudAdmin() ? `<section class="card" style="margin-bottom:14px"><h3>Импорт меню</h3><div class="actions" style="flex-wrap:wrap"><button class="primary" onclick="document.getElementById('menuImportFile').click()">Загрузить файл меню</button><button onclick="menuDownload(true)">Скачать шаблон Excel</button><button onclick="menuDownload(false)">Выгрузить меню</button><button onclick="restoreMenuBackup()">Восстановить копию</button></div></section>` : ''}
+        ${isCloudAdmin() ? `<section class="card" style="margin-bottom:14px"><h3>Импорт меню</h3><div class="actions" style="flex-wrap:wrap"><button class="primary" onclick="openMenuPicker()">Загрузить файл меню</button><button onclick="menuDownload(true)">Скачать шаблон Excel</button><button onclick="menuDownload(false)">Выгрузить меню</button><button onclick="restoreMenuBackup()">Восстановить копию</button></div></section>` : ''}
         ${categories ||
           `<div class="empty">
             Категорий пока нет. Создайте категорию, затем добавьте блюда и напитки.
@@ -3049,6 +3080,7 @@
       exitFocus = null;
     }
     function handleExitBack() {
+      if (!document.getElementById("menuNotice").hidden) { finishMenuNotice(false); return; }
       if (!document.getElementById("menuImportDialog").hidden) { closeMenuImport(); return; }
       if (!exitDialog.hidden) { hideExitDialog(); return; }
       if (orderModalOpen) { closeOrderModal(); return; }
