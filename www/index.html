@@ -1265,6 +1265,15 @@ let uiLanguage = localStorage.getItem('waiter-ui-language') || 'uk';
 if (!['uk','ru','en'].includes(uiLanguage)) uiLanguage='uk';
 const uiOriginal = new WeakMap();
 Object.assign(uiDict,{"Скопируйте текст заказа:":["Скопіюйте текст замовлення:","Copy the order text:"],"Подтвердить":["Підтвердити","Confirm"],"Отмена":["Скасувати","Cancel"],"Готово":["Готово","Done"]});
+Object.assign(uiDict, {
+ "Назначить администратором": ["Призначити адміністратором", "Make administrator"],
+ "Назначить официантом": ["Призначити офіціантом", "Make waiter"],
+ "Назначить участника администратором?": ["Призначити учасника адміністратором?", "Make this member an administrator?"],
+ "Изменить роль участника на официанта?": ["Змінити роль учасника на офіціанта?", "Change this member's role to waiter?"],
+ "Роль участника изменена.": ["Роль учасника змінено.", "Member role updated."],
+ "Не удалось изменить роль:": ["Не вдалося змінити роль:", "Could not change role:"],
+ "Обновите данные группы, чтобы получить актуальные права.": ["Оновіть дані групи, щоб отримати актуальні права.", "Refresh group data to get current permissions."]
+});
 function uiT(s){return uiLanguage==='ru'?s:(uiDict[s]?.[uiLanguage==='uk'?0:1]||s);}
 function uiMessage(s){
  if(typeof s!=="string" || uiLanguage==='ru') return s;
@@ -2858,6 +2867,8 @@ uiTranslate();
       if (!cloudGroup) return;
       const { data, error } = await cloud.from("waiter_group_members").select("user_id,role,joined_at").eq("group_id", cloudGroup.id);
       if (error) return await menuNotice("Не удалось загрузить участников: " + error.message);
+      const own = (data || []).find(m => m.user_id === cloudUser?.id);
+      if (own && own.role !== cloudRole) { cloudRole = own.role; render(); }
       const ids = (data || []).map(m => m.user_id);
       const { data: profiles } = ids.length ? await cloud.from("waiter_profiles").select("user_id,full_name,phone").in("user_id", ids) : { data: [] };
       const byId = Object.fromEntries((profiles || []).map(p => [p.user_id, p]));
@@ -2882,6 +2893,7 @@ uiTranslate();
       const profile = (window.waiterGroupProfiles || {})[userId] || {};
       const isSelf = userId === cloudUser?.id;
       const canRemove = cloudRole === "admin" && !isSelf && member.role !== "admin";
+      const canChangeRole = cloudRole === "admin" && !isSelf;
       const backdrop = document.createElement("div");
       backdrop.className = "waiter-profile-backdrop";
       backdrop.id = "waiter-profile-backdrop";
@@ -2891,6 +2903,7 @@ uiTranslate();
         <div class="waiter-profile-field"><small>Номер телефона</small><strong>${esc(profile.phone || "Не указан")}</strong></div>
         <div class="waiter-profile-field"><small>Роль в группе</small><strong>${member.role === "admin" ? "Администратор" : "Официант"}</strong></div>
         <div class="waiter-profile-actions">
+          ${canChangeRole ? `<button class="primary" onclick="runSettingsAction(()=>changeWaiterRole('${userId}', '${member.role === "admin" ? "waiter" : "admin"}'))">${member.role === "admin" ? "Назначить официантом" : "Назначить администратором"}</button>` : ""}
           ${canRemove ? `<button class="danger" onclick="runSettingsAction(()=>removeWaiterFromGroup('${userId}', true))">Удалить из группы</button>` : ""}
           <button onclick="closeWaiterProfile()">Закрыть</button>
         </div>
@@ -2904,6 +2917,18 @@ uiTranslate();
 
     function closeWaiterProfile() {
       document.getElementById("waiter-profile-backdrop")?.remove();
+    }
+
+    async function changeWaiterRole(userId, role) {
+      if (!isCloudAdmin() || userId === cloudUser.id || !['admin','waiter'].includes(role)) return;
+      const groupId = cloudGroup.id;
+      if (!await menuNoticeConfirm(role === 'admin' ? 'Назначить участника администратором?' : 'Изменить роль участника на официанта?')) return;
+      if (!isCloudAdmin() || cloudGroup.id !== groupId) return;
+      const { error } = await cloud.rpc('admin_set_waiter_role', {p_group_id:groupId,p_user_id:userId,p_role:role});
+      if (error) return await menuNotice(uiT('Не удалось изменить роль:') + ' ' + error.message);
+      closeWaiterProfile();
+      await refreshCloudGroup();
+      await menuNotice('Роль участника изменена.');
     }
 
     async function removeWaiterFromGroup(userId, fromProfile = false) {
